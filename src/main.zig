@@ -1,7 +1,6 @@
 const std = @import("std");
 const lex = @import("lex.zig");
 const compile = @import("compile.zig");
-const value = @import("value.zig");
 
 pub fn main() !void {
     const file = try std.fs.cwd().openFile("examples/test.at", .{});
