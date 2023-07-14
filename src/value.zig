@@ -3,11 +3,13 @@ const std = @import("std");
 pub const CTy = enum {
     struc,
     field,
+    num,
 };
 
 pub const CVal = union(CTy) {
     struc: Node(Struct),
     field: Node(Field),
+    num: []const u8,
 
     pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) std.os.WriteError!void {
         switch (self) {
@@ -20,6 +22,7 @@ pub const CVal = union(CTy) {
                 }
             },
             CVal.field => |node| try writer.print("field {}", .{node.val}),
+            CVal.num => |num| try writer.print("num {s}", .{num}),
         }
     }
 };

@@ -21,21 +21,18 @@ pub fn lex(input: []const u8, output: []Sp(Token)) usize {
 }
 
 pub const TokenTy = enum {
-    alphanum,
+    ident,
     num,
-    other,
 };
 
 pub const Token = union(TokenTy) {
-    alphanum: []const u8,
+    ident: []const u8,
     num: []const u8,
-    other: []const u8,
 
     pub fn toStr(self: *const Token) []const u8 {
         return switch (self.*) {
-            Token.alphanum => |ident| ident,
+            Token.ident => |ident| ident,
             Token.num => |int| int,
-            Token.other => |cp| cp,
         };
     }
 };
@@ -119,7 +116,7 @@ const Lexer = struct {
                             _ = self.nextIf(isIdentBody) orelse break;
                         }
                         const name = self.input[start.pos..self.curr.pos];
-                        self.addToken(start, Token{ .alphanum = name });
+                        self.addToken(start, Token{ .ident = name });
                     } else if (isDigit(cp)) {
                         // Integers
                         while (true) {
@@ -129,7 +126,7 @@ const Lexer = struct {
                         self.addToken(start, Token{ .num = name });
                     } else if (cp[0] > ' ') {
                         // Other characters
-                        self.addToken(start, Token{ .other = cp });
+                        self.addToken(start, Token{ .ident = cp });
                     } else {
                         // Invalid character
                         self.curr = start;

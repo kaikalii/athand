@@ -60,7 +60,7 @@ pub const Compiler = struct {
             self.last_span = token.span;
             std.debug.print("token: {s}\n", .{token.val.toStr()});
             switch (token.val) {
-                Token.alphanum => |ident| {
+                Token.ident => |ident| {
                     // Builtins
                     inline for (@typeInfo(Builtins).Struct.decls) |builtin| {
                         if (eql(u8, builtin.name, ident)) {
@@ -87,10 +87,12 @@ pub const Compiler = struct {
                                 field.struc.field_root = try self.newField(ident, field.struc, node);
                             }
                         },
+                        else => {
+                            @panic("TODO: ident on non-struct");
+                        },
                     }
                 },
-                Token.num => {},
-                Token.other => {},
+                Token.num => |num| _ = try self.push(CVal{ .num = num }),
             }
         }
         std.debug.print("\nstack:\n", .{});
