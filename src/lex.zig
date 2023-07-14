@@ -1,6 +1,6 @@
 const std = @import("std");
 
-pub fn lex(input: []const u8, output: []Token) usize {
+pub fn lex(input: []const u8, output: []Sp(Token)) usize {
     var lexer = Lexer{
         .input = input,
         .curr = Loc{
@@ -35,6 +35,7 @@ pub const TokenTy = enum {
     semicolon,
     period,
     comma,
+    struc,
 };
 
 pub const Token = union(TokenTy) {
@@ -54,6 +55,7 @@ pub const Token = union(TokenTy) {
     semicolon,
     period,
     comma,
+    struc,
 
     pub fn toStr(self: Token) []const u8 {
         return switch (self) {
@@ -73,6 +75,7 @@ pub const Token = union(TokenTy) {
             Token.semicolon => ";",
             Token.period => ".",
             Token.comma => ",",
+            Token.struc => "struct",
         };
     }
 };
@@ -83,12 +86,24 @@ const Loc = struct {
     pos: u32,
 };
 
+const Span = struct {
+    start: Loc,
+    end: Loc,
+};
+
+pub fn Sp(comptime T: type) type {
+    return struct {
+        val: T,
+        span: Span,
+    };
+}
+
 const LexError = error{InvalidChar};
 
 const Lexer = struct {
     input: []const u8,
     curr: Loc,
-    tokens: []Token,
+    tokens: []Sp(Token),
     token_count: u32,
 
     fn currChar(self: *Lexer) ?u8 {
@@ -132,36 +147,40 @@ const Lexer = struct {
             const start = self.curr;
             const c = self.next() orelse break;
             switch (c) {
-                '(' => self.addToken(Token.open_paren),
-                ')' => self.addToken(Token.close_paren),
-                '{' => self.addToken(Token.open_curly),
-                '}' => self.addToken(Token.close_curly),
-                '[' => self.addToken(Token.open_bracket),
-                ']' => self.addToken(Token.close_bracket),
-                '+' => self.addToken(Token.plus),
-                '-' => self.addToken(Token.minus),
-                '*' => self.addToken(Token.star),
-                '/' => self.addToken(Token.slash),
-                ':' => self.addToken(Token.colon),
-                ';' => self.addToken(Token.semicolon),
-                '.' => self.addToken(Token.period),
-                ',' => self.addToken(Token.comma),
+                '(' => self.addToken(start, Token.open_paren),
+                ')' => self.addToken(start, Token.close_paren),
+                '{' => self.addToken(start, Token.open_curly),
+                '}' => self.addToken(start, Token.close_curly),
+                '[' => self.addToken(start, Token.open_bracket),
+                ']' => self.addToken(start, Token.close_bracket),
+                '+' => self.addToken(start, Token.plus),
+                '-' => self.addToken(start, Token.minus),
+                '*' => self.addToken(start, Token.star),
+                '/' => self.addToken(start, Token.slash),
+                ':' => self.addToken(start, Token.colon),
+                ';' => self.addToken(start, Token.semicolon),
+                '.' => self.addToken(start, Token.period),
+                ',' => self.addToken(start, Token.comma),
                 ' ', '\t', '\r', '\n' => {},
                 else => {
                     if (isIdentStart(c)) {
-                        // Identifiers
+                        // Identifiers and keywords
                         while (true) {
                             _ = self.nextIf(isIdentBody) orelse break;
                         }
                         const name = self.input[start.pos..self.curr.pos];
-                        self.addToken(Token{ .ident = name });
+                        if (std.mem.eql(u8, name, "struct")) {
+                            self.addToken(start, Token.struc);
+                        } else {
+                            self.addToken(start, Token{ .ident = name });
+                        }
                     } else if (isDigit(c)) {
                         // Integers
                         while (true) {
                             _ = self.nextIf(isDigit) orelse break;
                         }
                         const name = self.input[start.pos..self.curr.pos];
-                        self.addToken(Token{ .int = name });
+                        self.addToken(start, Token{ .int = name });
                     } else {
                         // Invalid character
                         self.curr = start;
@@ -172,8 +191,14 @@ const Lexer = struct {
         }
     }
 
-    fn addToken(self: *Lexer, token: Token) void {
-        self.tokens[self.token_count] = token;
+    fn addToken(self: *Lexer, start: Loc, token: Token) void {
+        self.tokens[self.token_count] = .{
+            .val = token,
+            .span = .{
+                .start = start,
+                .end = self.curr,
+            },
+        };
         self.token_count += 1;
     }
 

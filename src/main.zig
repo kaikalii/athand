@@ -1,19 +1,32 @@
 const std = @import("std");
 const lex = @import("lex.zig");
+const parse = @import("parse.zig");
 
 pub fn main() !void {
     const file = try std.fs.cwd().openFile("examples/test.at", .{});
     defer file.close();
 
-    var buffer: [1024]u8 = undefined;
+    var buffer: [1 << 16]u8 = undefined;
     const input = buffer[0..try file.readAll(&buffer)];
 
     std.debug.print("input:\n{s}\n\n", .{input});
 
-    var tokens: [1024]lex.Token = undefined;
-    const len = lex.lex(input, &tokens);
+    var token_buffer: [1 << 16]lex.Sp(lex.Token) = undefined;
+    const token_len = lex.lex(input, &token_buffer);
     std.debug.print("tokens: ", .{});
-    for (tokens[0..len]) |token| {
-        std.debug.print("{s} ", .{token.toStr()});
+    const tokens = token_buffer[0..token_len];
+    for (tokens) |token| {
+        std.debug.print("{s} ", .{token.val.toStr()});
+    }
+    std.debug.print("\n\n", .{});
+
+    parse.parse(tokens, &whenParsed);
+}
+
+fn whenParsed(items: []parse.Item) void {
+    std.debug.print("\nitems:\n", .{});
+    for (items) |item| {
+        item.debug();
+        std.debug.print("\n", .{});
     }
 }
