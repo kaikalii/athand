@@ -18,30 +18,61 @@ pub fn lex(input: []const u8, output: []Token) usize {
     return lexer.token_count;
 }
 
-pub const TokenTy = enum { ident, int, open_paren, close_paren, plus, minus, star, slash, eof };
+pub const TokenTy = enum {
+    ident,
+    int,
+    open_paren,
+    close_paren,
+    open_curly,
+    close_curly,
+    open_bracket,
+    close_bracket,
+    plus,
+    minus,
+    star,
+    slash,
+    colon,
+    semicolon,
+    period,
+    comma,
+};
 
 pub const Token = union(TokenTy) {
     ident: []const u8,
     int: []const u8,
-    open_paren: void,
-    close_paren: void,
-    plus: void,
-    minus: void,
-    star: void,
-    slash: void,
-    eof: void,
+    open_paren,
+    close_paren,
+    open_curly,
+    close_curly,
+    open_bracket,
+    close_bracket,
+    plus,
+    minus,
+    star,
+    slash,
+    colon,
+    semicolon,
+    period,
+    comma,
 
     pub fn toStr(self: Token) []const u8 {
         return switch (self) {
-            TokenTy.ident => |ident| ident,
-            TokenTy.int => |int| int,
-            TokenTy.open_paren => "(",
-            TokenTy.close_paren => ")",
-            TokenTy.plus => "+",
-            TokenTy.minus => "-",
-            TokenTy.star => "*",
-            TokenTy.slash => "/",
-            TokenTy.eof => "EOF",
+            Token.ident => |ident| ident,
+            Token.int => |int| int,
+            Token.open_paren => "(",
+            Token.close_paren => ")",
+            Token.open_curly => "{",
+            Token.close_curly => "}",
+            Token.open_bracket => "[",
+            Token.close_bracket => "]",
+            Token.plus => "+",
+            Token.minus => "-",
+            Token.star => "*",
+            Token.slash => "/",
+            Token.colon => ":",
+            Token.semicolon => ";",
+            Token.period => ".",
+            Token.comma => ",",
         };
     }
 };
@@ -101,27 +132,38 @@ const Lexer = struct {
             const start = self.curr;
             const c = self.next() orelse break;
             switch (c) {
-                '(' => self.addToken(Token{ .open_paren = undefined }),
-                ')' => self.addToken(Token{ .close_paren = undefined }),
-                '+' => self.addToken(Token{ .plus = undefined }),
-                '-' => self.addToken(Token{ .minus = undefined }),
-                '*' => self.addToken(Token{ .star = undefined }),
-                '/' => self.addToken(Token{ .slash = undefined }),
-                ' ' => {},
+                '(' => self.addToken(Token.open_paren),
+                ')' => self.addToken(Token.close_paren),
+                '{' => self.addToken(Token.open_curly),
+                '}' => self.addToken(Token.close_curly),
+                '[' => self.addToken(Token.open_bracket),
+                ']' => self.addToken(Token.close_bracket),
+                '+' => self.addToken(Token.plus),
+                '-' => self.addToken(Token.minus),
+                '*' => self.addToken(Token.star),
+                '/' => self.addToken(Token.slash),
+                ':' => self.addToken(Token.colon),
+                ';' => self.addToken(Token.semicolon),
+                '.' => self.addToken(Token.period),
+                ',' => self.addToken(Token.comma),
+                ' ', '\t', '\r', '\n' => {},
                 else => {
                     if (isIdentStart(c)) {
+                        // Identifiers
                         while (true) {
                             _ = self.nextIf(isIdentBody) orelse break;
                         }
                         const name = self.input[start.pos..self.curr.pos];
                         self.addToken(Token{ .ident = name });
                     } else if (isDigit(c)) {
+                        // Integers
                         while (true) {
                             _ = self.nextIf(isDigit) orelse break;
                         }
                         const name = self.input[start.pos..self.curr.pos];
                         self.addToken(Token{ .int = name });
                     } else {
+                        // Invalid character
                         self.curr = start;
                         return LexError.InvalidChar;
                     }

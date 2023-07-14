@@ -1,1 +1,22 @@
-(1 + 2) * 3
+struct Loc {
+    line: uint,
+    col: uint,
+    pos: uint,
+}
+
+enum Token {
+    ident: []u8,
+    int: []u8,
+    open_paren,
+    close_paren,
+    plus,
+    minus,
+    star,
+    slash,
+
+    fn toStr(self) []u8 {
+        return switch (self) {
+            
+        }
+    }
+}
