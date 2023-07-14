@@ -1,6 +1,7 @@
 const std = @import("std");
 const lex = @import("lex.zig");
 const compile = @import("compile.zig");
+const value = @import("value.zig");
 
 pub fn main() !void {
     const file = try std.fs.cwd().openFile("examples/test.at", .{});
@@ -11,9 +12,9 @@ pub fn main() !void {
 
     var token_buffer: [1 << 16]lex.Sp(lex.Token) = undefined;
     const token_len = lex.lex(input, &token_buffer);
-    std.debug.print("tokens: ", .{});
     const tokens = token_buffer[0..token_len];
 
-    var compiler = compile.Compiler.init();
+    var stack: [1 << 16]u8 = undefined;
+    var compiler = compile.Compiler.init(&stack);
     compiler.compile(tokens) catch |err| compiler.debugError(err);
 }
