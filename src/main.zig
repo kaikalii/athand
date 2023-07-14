@@ -11,9 +11,9 @@ pub fn main() !void {
 
     var token_buffer: [1 << 16]lex.Sp(lex.Token) = undefined;
     const token_len = lex.lex(input, &token_buffer);
+    std.debug.print("tokens: ", .{});
     const tokens = token_buffer[0..token_len];
 
-    var stack: [1 << 16]u8 = undefined;
-    var compiler = compile.Compiler.init(&stack);
+    var compiler = compile.Compiler.init();
     compiler.compile(tokens) catch |err| compiler.debugError(err);
 }

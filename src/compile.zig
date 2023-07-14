@@ -10,32 +10,43 @@ const CompileError = error{
 };
 
 pub const Compiler = struct {
-    stack: std.ArrayList(CVal),
+    stack: [1024]CVal,
+    stack_size: usize,
     last_span: ?lex.Span,
     newest_struct: ?*Node(Struct),
 
-    pub fn init(stack: []u8) Compiler {
-        var alloc = std.heap.FixedBufferAllocator.init(stack);
+    pub fn init() Compiler {
         return Compiler{
-            .stack = std.ArrayList(CVal).init(alloc.allocator()),
+            .stack = undefined,
+            .stack_size = 0,
             .last_span = null,
             .newest_struct = null,
         };
     }
 
     fn push(self: *Compiler, val: CVal) CompileError!*CVal {
-        var slot = self.stack.addOne() catch return error.StackOverflow;
-        slot.* = val;
-        return slot;
+        if (self.stack_size == self.stack.len) {
+            return error.StackOverflow;
+        }
+        const ptr = &self.stack[self.stack_size];
+        ptr.* = val;
+        self.stack_size += 1;
+        return ptr;
     }
 
     fn top(self: *Compiler) CompileError!*CVal {
-        if (self.stack.items.len == 0) return error.StackUnderflow;
-        return &self.stack.items[self.stack.items.len - 1];
+        if (self.stack_size == 0) {
+            return error.StackUnderflow;
+        }
+        return &self.stack[self.stack_size - 1];
     }
 
     fn pop(self: *Compiler) CompileError!CVal {
-        return self.stack.pop() catch error.StackUnderflow;
+        if (self.stack_size == 0) {
+            return error.StackUnderflow;
+        }
+        self.stack_size -= 1;
+        return self.stack[self.stack_size];
     }
 
     pub fn compile(self: *Compiler, tokens: []const Sp(Token)) CompileError!void {
@@ -77,8 +88,8 @@ pub const Compiler = struct {
                 Token.num => |num| _ = try self.push(CVal{ .num = num }),
             }
         }
-        std.debug.print("stack:\n", .{});
-        for (self.stack.items) |val| {
+        std.debug.print("\nstack:\n", .{});
+        for (self.stack[0..self.stack_size]) |val| {
             std.debug.print("{}\n", .{val});
         }
     }
