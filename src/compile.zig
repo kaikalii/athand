@@ -95,8 +95,7 @@ pub const Compiler = struct {
         }
         std.debug.print("\nstack:\n", .{});
         for (self.stack[0..self.stack_size]) |val| {
-            val.debug();
-            std.debug.print("\n", .{});
+            std.debug.print("{}\n", .{val});
         }
     }
 

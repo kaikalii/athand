@@ -9,22 +9,17 @@ pub const CVal = union(CTy) {
     struc: Node(Struct),
     field: Node(Field),
 
-    pub fn debug(self: *const CVal) void {
-        switch (self.*) {
+    pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) std.os.WriteError!void {
+        switch (self) {
             CVal.struc => |snode| {
-                std.debug.print("struct ", .{});
-                std.debug.print("{s}", .{snode.val.name});
+                try writer.print("struct {s}", .{snode.val.name});
                 var field = snode.val.field_root;
                 while (field) |fnode| {
-                    std.debug.print("\n  ", .{});
-                    fnode.val.debug();
+                    try writer.print("\n  {}", .{fnode.val});
                     field = fnode.next;
                 }
             },
-            CVal.field => |node| {
-                std.debug.print("field ", .{});
-                node.val.debug();
-            },
+            CVal.field => |node| try writer.print("field {}", .{node.val}),
         }
     }
 };
@@ -57,9 +52,8 @@ pub const Field = struct {
     name: []const u8,
     ty: Ty,
 
-    pub fn debug(self: *const Field) void {
-        std.debug.print("{s} ", .{self.name});
-        self.ty.debug();
+    pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) std.os.WriteError!void {
+        return writer.print("{s} {}", .{ self.name, self.ty });
     }
 };
 
@@ -69,10 +63,10 @@ pub const Ty = union(TyTag) {
     named: []const u8,
     undefined,
 
-    pub fn debug(self: *const Ty) void {
-        switch (self.*) {
-            Ty.named => |name| std.debug.print("{s}", .{name}),
-            Ty.undefined => std.debug.print("undefined", .{}),
-        }
+    pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) std.os.WriteError!void {
+        return switch (self) {
+            Ty.named => |name| writer.print("{s}", .{name}),
+            Ty.undefined => writer.print("undefined", .{}),
+        };
     }
 };

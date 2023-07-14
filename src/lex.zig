@@ -114,7 +114,7 @@ const Lexer = struct {
                 ' ', '\t', '\r', '\n' => {},
                 else => {
                     if (isIdentStart(cp)) {
-                        // Identifiers and keywords
+                        // Identifiers
                         while (true) {
                             _ = self.nextIf(isIdentBody) orelse break;
                         }
