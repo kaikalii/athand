@@ -1,6 +1,6 @@
 const std = @import("std");
 const lex = @import("lex.zig");
-const parse = @import("parse.zig");
+const compile = @import("compile.zig");
 
 pub fn main() !void {
     const file = try std.fs.cwd().openFile("examples/test.at", .{});
@@ -20,13 +20,6 @@ pub fn main() !void {
     }
     std.debug.print("\n\n", .{});
 
-    parse.parse(tokens, &whenParsed);
-}
-
-fn whenParsed(items: []parse.Item) void {
-    std.debug.print("\nitems:\n", .{});
-    for (items) |item| {
-        item.debug();
-        std.debug.print("\n", .{});
-    }
+    var compiler = compile.Compiler.init();
+    compiler.compile(tokens) catch |err| compiler.debugError(err);
 }
