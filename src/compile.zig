@@ -4,6 +4,8 @@ const lex = @import("lex.zig");
 const CVal = value.CVal;
 const Ty = value.Ty;
 const Node = value.Node;
+const Struct = value.Struct;
+const Field = value.Field;
 const Token = lex.Token;
 const Sp = lex.Sp;
 const eql = std.mem.eql;
@@ -17,7 +19,7 @@ pub const Compiler = struct {
     stack: [1024]CVal,
     stack_size: usize,
     last_span: ?lex.Span,
-    newest_struct: ?*Node(value.Struct),
+    newest_struct: ?*Node(Struct),
 
     pub fn init() Compiler {
         return Compiler{
@@ -74,14 +76,7 @@ pub const Compiler = struct {
                             if (struc.name.len == 0) {
                                 struc.name = ident;
                             } else {
-                                const field = value.Field{
-                                    .struc = &node.val,
-                                    .name = ident,
-                                    .ty = Ty.undefined,
-                                };
-                                const new_node = Node(value.Field).init(field).withNext(struc.field_root);
-                                const new_val = try self.push(CVal{ .field = new_node });
-                                struc.field_root = &new_val.*.field;
+                                struc.field_root = try self.newField(ident, struc, struc.field_root);
                             }
                         },
                         CVal.field => |*node| {
@@ -89,14 +84,7 @@ pub const Compiler = struct {
                             if (field.ty == Ty.undefined) {
                                 field.ty = Ty{ .named = ident };
                             } else {
-                                const new_field = value.Field{
-                                    .struc = field.struc,
-                                    .name = ident,
-                                    .ty = Ty.undefined,
-                                };
-                                const new_node = Node(value.Field).init(new_field).withNext(node);
-                                const new_val = try self.push(CVal{ .field = new_node });
-                                field.struc.field_root = &new_val.*.field;
+                                field.struc.field_root = try self.newField(ident, field.struc, node);
                             }
                         },
                     }
@@ -110,6 +98,17 @@ pub const Compiler = struct {
             val.debug();
             std.debug.print("\n", .{});
         }
+    }
+
+    fn newField(self: *Compiler, name: []const u8, struc: *Struct, next: ?*Node(Field)) CompileError!*Node(Field) {
+        const new_field = Field{
+            .struc = struc,
+            .name = name,
+            .ty = Ty.undefined,
+        };
+        const new_node = Node(Field).init(new_field).withNext(next);
+        const new_val = try self.push(CVal{ .field = new_node });
+        return &new_val.*.field;
     }
 
     pub fn debugError(self: *Compiler, err: CompileError) void {
@@ -126,7 +125,7 @@ pub const Compiler = struct {
 
 const Builtins = struct {
     pub fn @"struct"(comp: *Compiler) CompileError!void {
-        const new_node = Node(value.Struct).init(value.Struct.init()).withNext(comp.newest_struct);
+        const new_node = Node(Struct).init(Struct.init()).withNext(comp.newest_struct);
         const new_val = try comp.push(CVal{ .struc = new_node });
         comp.newest_struct = &new_val.*.struc;
     }
