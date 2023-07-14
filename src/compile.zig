@@ -82,7 +82,7 @@ pub const Compiler = struct {
                         CVal.field => |*node| {
                             const field = &node.val;
                             if (field.ty == Ty.undefined) {
-                                field.ty = Ty{ .named = ident };
+                                field.ty = Ty.fromStr(ident);
                             } else {
                                 field.struc.field_root = try self.newField(ident, field.struc, node);
                             }

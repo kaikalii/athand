@@ -57,16 +57,56 @@ pub const Field = struct {
     }
 };
 
-pub const TyTag = enum { named, undefined };
+pub const TyTag = enum { primitive, named, undefined };
 
 pub const Ty = union(TyTag) {
+    primitive: Primitive,
     named: []const u8,
     undefined,
 
     pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) std.os.WriteError!void {
         return switch (self) {
             Ty.named => |name| writer.print("{s}", .{name}),
+            Ty.primitive => |prim| writer.print("{}", .{prim}),
             Ty.undefined => writer.print("undefined", .{}),
         };
+    }
+
+    pub fn fromStr(s: []const u8) Ty {
+        if (Primitive.fromStr(s)) |prim| {
+            return .{ .primitive = prim };
+        } else {
+            return .{ .named = s };
+        }
+    }
+};
+
+pub const Primitive = enum {
+    u8,
+    u16,
+    u32,
+    u64,
+    usize,
+    i8,
+    i16,
+    i32,
+    i64,
+    isize,
+    f32,
+    f64,
+    bool,
+    void,
+
+    pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) std.os.WriteError!void {
+        return writer.print("{s}", .{@tagName(self)});
+    }
+
+    pub fn fromStr(s: []const u8) ?Primitive {
+        inline for (@typeInfo(Primitive).Enum.fields) |field| {
+            if (std.mem.eql(u8, s, field.name)) {
+                return @field(Primitive, field.name);
+            }
+        }
+        return null;
     }
 };
