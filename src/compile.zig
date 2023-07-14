@@ -58,7 +58,6 @@ pub const Compiler = struct {
     pub fn compile(self: *Compiler, tokens: []const Sp(Token)) CompileError!void {
         tokens: for (tokens) |token| {
             self.last_span = token.span;
-            std.debug.print("token: {s}\n", .{token.val.toStr()});
             switch (token.val) {
                 Token.ident => |ident| {
                     // Builtins
@@ -109,7 +108,7 @@ pub const Compiler = struct {
         };
         const new_node = Node(Field).init(new_field).withNext(next);
         const new_val = try self.push(CVal{ .field = new_node });
-        return &new_val.*.field;
+        return &new_val.field;
     }
 
     pub fn debugError(self: *Compiler, err: CompileError) void {
@@ -118,8 +117,8 @@ pub const Compiler = struct {
             std.debug.print(" at {}:{}", .{ span.start.line, span.start.col });
         std.debug.print(": ", .{});
         switch (err) {
-            error.StackOverflow => std.debug.print("stack overflow\n", .{}),
-            error.StackUnderflow => std.debug.print("stack underflow\n", .{}),
+            error.StackOverflow => std.debug.print("compile stack overflow\n", .{}),
+            error.StackUnderflow => std.debug.print("compile stack underflow\n", .{}),
         }
     }
 };
@@ -128,7 +127,7 @@ const Builtins = struct {
     pub fn @"struct"(comp: *Compiler) CompileError!void {
         const new_node = Node(Struct).init(Struct.init()).withNext(comp.newest_struct);
         const new_val = try comp.push(CVal{ .struc = new_node });
-        comp.newest_struct = &new_val.*.struc;
+        comp.newest_struct = &new_val.struc;
     }
 
     pub fn @"fn"(comp: *Compiler) CompileError!void {
