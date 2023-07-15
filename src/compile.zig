@@ -1,5 +1,6 @@
 const std = @import("std");
 const lex = @import("lex.zig");
+const runtime = @import("runtime.zig");
 const Token = lex.Token;
 const Sp = lex.Sp;
 
@@ -79,11 +80,24 @@ pub const Compiler = struct {
                     if (func.val.name.len == 0) {
                         func.val.name = ident;
                     } else {
-                        var node = .{
+                        var node: ?Node(Word) = null;
+                        inline for (@typeInfo(runtime.RBuiltins).Struct.decls) |decl| {
+                            if (std.mem.eql(u8, ident, decl.name)) {
+                                node = .{
+                                    .val = .{ .builtin = .{
+                                        .name = ident,
+                                        .f = @field(runtime.RBuiltins, decl.name),
+                                    } },
+                                    .next = func.val.body,
+                                };
+                                break;
+                            }
+                        }
+                        var n = node orelse Node(Word){
                             .val = .{ .call = ident },
                             .next = func.val.body,
                         };
-                        func.val.body = &node;
+                        func.val.body = &n;
                     }
                     self.run();
                 } else {
@@ -199,16 +213,19 @@ pub const Func = struct {
 
 pub const WordTy = enum {
     int,
+    builtin,
     call,
 };
 
 pub const Word = union(WordTy) {
     int: i64,
+    builtin: runtime.BuiltinFn,
     call: []const u8,
 
     pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) std.os.WriteError!void {
         return switch (self) {
             Word.int => |int| writer.print("{}", .{int}),
+            Word.builtin => |f| writer.print("{}", .{f}),
             Word.call => |name| writer.print("{s}", .{name}),
         };
     }

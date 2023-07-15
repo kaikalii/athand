@@ -1,4 +1,4 @@
 
 fn square dup *
 
-fn main 1 print
+fn main 2 square println

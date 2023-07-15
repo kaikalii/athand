@@ -32,6 +32,7 @@ fn whenCompiled(data: compile.Compiled) void {
         std.debug.print("{}\n", .{f.val});
         func = f.next;
     }
+    std.debug.print("\n", .{});
 
     var rt = runtime.Runtime.init(data);
     rt.start() catch |err| std.debug.print("{}", .{err});
