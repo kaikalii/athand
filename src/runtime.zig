@@ -1,4 +1,5 @@
 const std = @import("std");
+const lex = @import("lex.zig");
 const compile = @import("compile.zig");
 const Node = compile.Node;
 const Func = compile.Func;
@@ -8,6 +9,7 @@ pub const RuntimeError = error{
     NoMainFunction,
     StackUnderflow,
     UnknownFunction,
+    UnresolvedFunction,
 };
 
 pub const Value = i64;
@@ -56,10 +58,9 @@ pub const Runtime = struct {
                     std.debug.print("  call {}\n", .{builtin});
                     next = try builtin.f(self, curr.next);
                 },
-                .call => |ident| {
-                    std.debug.print("  call {s}\n", .{ident});
-                    const func = self.data.findFunction(ident) orelse return error.UnknownFunction;
-                    return self.call(func, next);
+                .call => |function| {
+                    std.debug.print("  call {}\n", .{function});
+                    return self.call(function.func orelse return error.UnresolvedFunction, next);
                 },
             }
             if (next) |nex| {
@@ -89,9 +90,19 @@ pub const Runtime = struct {
     }
 };
 
-pub const BuiltinFn = struct {
+pub const BuiltinFn = *const fn (*Runtime, Continue) RuntimeError!Continue;
+pub const BuiltinFunction = struct {
     name: []const u8,
-    f: *const fn (*Runtime, Continue) RuntimeError!Continue,
+    f: BuiltinFn,
+
+    pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) std.os.WriteError!void {
+        return writer.print("{s}", .{self.name});
+    }
+};
+pub const CodeFunction = struct {
+    name: []const u8,
+    span: lex.Span,
+    func: ?*const compile.Func,
 
     pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) std.os.WriteError!void {
         return writer.print("{s}", .{self.name});

@@ -7,11 +7,13 @@ const Sp = lex.Sp;
 pub const CompileErrorKind = enum {
     UnexpectedToken,
     InvalidNumber,
+    UnknownFunction,
 
     pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) std.os.WriteError!void {
         return switch (self) {
             CompileErrorKind.UnexpectedToken => writer.print("unexpected token", .{}),
             CompileErrorKind.InvalidNumber => writer.print("invalid number", .{}),
+            CompileErrorKind.UnknownFunction => writer.print("unknown function", .{}),
         };
     }
 };
@@ -61,8 +63,7 @@ pub const Compiler = struct {
 
     fn run(self: *Compiler) void {
         if (self.tokens.len == 0) {
-            self.finishItem();
-            self.then(self.data);
+            self.finish();
             return;
         }
         const token = self.tokens[0];
@@ -94,7 +95,7 @@ pub const Compiler = struct {
                             }
                         }
                         var n = node orelse Node(Word){
-                            .val = .{ .call = ident },
+                            .val = .{ .call = .{ .name = ident, .span = token.span, .func = null } },
                             .next = func.val.body,
                         };
                         func.val.body = &n;
@@ -129,6 +130,31 @@ pub const Compiler = struct {
                 if (func.val.body) |*body|
                     reverse_list(Word, body),
         }
+    }
+
+    fn finish(self: *Compiler) void {
+        // Finish last item
+        self.finishItem();
+
+        // Resolve identifiers
+        var currFunc = self.data.func;
+        while (currFunc) |func| {
+            var currWord = func.val.body;
+            while (currWord) |word| {
+                switch (word.val) {
+                    .call => |*function| function.func = self.data.findFunction(function.name) orelse {
+                        self.err = .{ .kind = CompileErrorKind.UnknownFunction, .span = function.span };
+                        return;
+                    },
+                    else => {},
+                }
+                currWord = word.next;
+            }
+            currFunc = func.next;
+        }
+
+        // Call continuation
+        self.then(self.data);
     }
 };
 
@@ -219,8 +245,8 @@ pub const WordTy = enum {
 
 pub const Word = union(WordTy) {
     int: i64,
-    builtin: runtime.BuiltinFn,
-    call: []const u8,
+    builtin: runtime.BuiltinFunction,
+    call: runtime.CodeFunction,
 
     pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) std.os.WriteError!void {
         return switch (self) {
