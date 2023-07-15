@@ -88,12 +88,8 @@ const Lexer = struct {
                 self.curr.col = 1;
             },
             '\r' => {},
-            '\t' => {
-                self.curr.col += 4;
-            },
-            else => {
-                self.curr.col += 1;
-            },
+            '\t' => self.curr.col += 4,
+            else => self.curr.col += 1,
         }
         _ = self.inputIter.nextCodepoint().?;
         self.curr.pos += cp.len;
@@ -116,14 +112,13 @@ const Lexer = struct {
                 else => {
                     if (isIdentStart(cp)) {
                         // Identifiers
-                        while (true) {
+                        while (true)
                             _ = self.nextIf(isIdentBody) orelse break;
-                        }
                         const name = self.input[start.pos..self.curr.pos];
                         self.addToken(start, Token{ .ident = name });
                     } else if (isDigit(cp) or cp[0] == '-') {
                         // Integers
-                        var got_digit = false;
+                        var got_digit = isDigit(cp);
                         while (true) {
                             _ = self.nextIf(isDigit) orelse break;
                             got_digit = true;

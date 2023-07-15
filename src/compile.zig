@@ -6,10 +6,12 @@ const eql = std.mem.eql;
 
 pub const CompileErrorKind = enum {
     UnexpectedToken,
+    InvalidNumber,
 
     pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) std.os.WriteError!void {
         return switch (self) {
             CompileErrorKind.UnexpectedToken => writer.print("unexpected token", .{}),
+            CompileErrorKind.InvalidNumber => writer.print("invalid number", .{}),
         };
     }
 };
@@ -63,7 +65,7 @@ pub const Compiler = struct {
                     } else {
                         var node = .{
                             .val = .{ .call = ident },
-                            .next = null,
+                            .next = func.val.body,
                         };
                         func.val.body = &node;
                     }
@@ -73,7 +75,20 @@ pub const Compiler = struct {
                 }
             },
             Token.num => |num| {
-                _ = num;
+                if (self.data.func) |func| {
+                    const i = std.fmt.parseInt(i64, num, 10) catch {
+                        self.err = .{ .kind = CompileErrorKind.InvalidNumber, .span = token.span };
+                        return;
+                    };
+                    var node = .{
+                        .val = .{ .int = i },
+                        .next = func.val.body,
+                    };
+                    func.val.body = &node;
+                    self.run();
+                } else {
+                    self.err = .{ .kind = CompileErrorKind.UnexpectedToken, .span = token.span };
+                }
             },
         }
     }
@@ -158,17 +173,17 @@ pub const Func = struct {
 };
 
 pub const WordTy = enum {
-    num,
+    int,
     call,
 };
 
 pub const Word = union(WordTy) {
-    num: []const u8,
+    int: i64,
     call: []const u8,
 
     pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) std.os.WriteError!void {
         return switch (self) {
-            Word.num => |num| writer.print("{s}", .{num}),
+            Word.int => |int| writer.print("{}", .{int}),
             Word.call => |name| writer.print("{s}", .{name}),
         };
     }
