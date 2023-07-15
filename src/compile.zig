@@ -2,7 +2,6 @@ const std = @import("std");
 const lex = @import("lex.zig");
 const Token = lex.Token;
 const Sp = lex.Sp;
-const eql = std.mem.eql;
 
 pub const CompileErrorKind = enum {
     UnexpectedToken,
@@ -28,6 +27,7 @@ pub fn compile(tokens: []const Sp(Token), then: *const fn (Compiled) void) ?Comp
         .err = null,
         .data = .{
             .func = null,
+            .last_item = .func,
         },
     };
     comp.run();
@@ -36,6 +36,9 @@ pub fn compile(tokens: []const Sp(Token), then: *const fn (Compiled) void) ?Comp
 
 pub const Compiled = struct {
     func: ?*Node(Func),
+    last_item: enum {
+        func,
+    },
 };
 
 pub const Compiler = struct {
@@ -46,6 +49,7 @@ pub const Compiler = struct {
 
     fn run(self: *Compiler) void {
         if (self.tokens.len == 0) {
+            self.finishItem();
             self.then(self.data);
             return;
         }
@@ -54,7 +58,8 @@ pub const Compiler = struct {
         switch (token.val) {
             Token.ident => |ident| {
                 inline for (@typeInfo(CBuiltins).Struct.decls) |decl| {
-                    if (eql(u8, ident, decl.name)) {
+                    if (std.mem.eql(u8, ident, decl.name)) {
+                        self.finishItem();
                         @field(CBuiltins, decl.name)(self);
                         return;
                     }
@@ -92,6 +97,14 @@ pub const Compiler = struct {
             },
         }
     }
+
+    fn finishItem(self: *Compiler) void {
+        switch (self.data.last_item) {
+            .func => if (self.data.func) |func|
+                if (func.val.body) |*body|
+                    reverse_list(Word, body),
+        }
+    }
 };
 
 const CBuiltins = struct {
@@ -101,6 +114,7 @@ const CBuiltins = struct {
             .next = comp.data.func,
         };
         comp.data.func = &func;
+        comp.data.last_item = .func;
         comp.run();
     }
 };
