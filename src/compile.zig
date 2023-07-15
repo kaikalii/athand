@@ -86,7 +86,7 @@ pub const Compiler = struct {
                             if (struc.name.len == 0) {
                                 struc.name = ident;
                             } else {
-                                struc.field_root = try self.newField(ident, struc, struc.field_root);
+                                struc.fields = try self.newField(ident, struc, struc.fields);
                             }
                         },
                         CVal.field => |*node| {
@@ -94,7 +94,7 @@ pub const Compiler = struct {
                             if (field.ty == Ty.undefined) {
                                 field.ty = Ty.fromStr(ident);
                             } else {
-                                field.struc.field_root = try self.newField(ident, field.struc, node);
+                                field.struc.fields = try self.newField(ident, field.struc, node);
                             }
                         },
                     }
@@ -138,7 +138,7 @@ pub const Compiler = struct {
                 if (node.val.body) |*head|
                     reverse_list(Word, head),
             CVal.struc, CVal.field => if (self.newest_struct) |node|
-                if (node.val.field_root) |*head|
+                if (node.val.fields) |*head|
                     reverse_list(Field, head),
         }
     }
@@ -193,7 +193,7 @@ pub const CVal = union(CTy) {
             CVal.word => |node| try writer.print("{}", .{node.val}),
             CVal.struc => |node| {
                 try writer.print("struct {s} ", .{node.val.name});
-                if (node.val.field_root) |head| {
+                if (node.val.fields) |head| {
                     try writer.print("{}", .{head});
                 }
             },
@@ -266,10 +266,10 @@ pub const Word = union(WordTy) {
 
 pub const Struct = struct {
     name: []const u8,
-    field_root: ?*Node(Field),
+    fields: ?*Node(Field),
 
     pub fn init() Struct {
-        return .{ .name = "", .field_root = null };
+        return .{ .name = "", .fields = null };
     }
 };
 
