@@ -117,13 +117,19 @@ const Lexer = struct {
                         }
                         const name = self.input[start.pos..self.curr.pos];
                         self.addToken(start, Token{ .ident = name });
-                    } else if (isDigit(cp)) {
+                    } else if (isDigit(cp) || cp[0] == '-') {
                         // Integers
+                        var got_digit = false;
                         while (true) {
                             _ = self.nextIf(isDigit) orelse break;
+                            got_digit = true;
                         }
-                        const name = self.input[start.pos..self.curr.pos];
-                        self.addToken(start, Token{ .num = name });
+                        if (got_digit) {
+                            const name = self.input[start.pos..self.curr.pos];
+                            self.addToken(start, Token{ .num = name });
+                        } else {
+                            self.addToken(start, Token{ .ident = cp });
+                        }
                     } else if (cp[0] > ' ') {
                         // Other characters
                         self.addToken(start, Token{ .ident = cp });

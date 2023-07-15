@@ -55,10 +55,10 @@ pub const Compiler = struct {
             switch (token.val) {
                 Token.ident => |ident| {
                     // Builtins
-                    inline for (@typeInfo(Builtins).Struct.decls) |builtin| {
+                    inline for (@typeInfo(CBuiltins).Struct.decls) |builtin| {
                         if (eql(u8, builtin.name, ident)) {
                             self.finishItem();
-                            try @field(Builtins, builtin.name)(self);
+                            try @field(CBuiltins, builtin.name)(self);
                             continue :tokens;
                         }
                     }
@@ -123,7 +123,7 @@ pub const Compiler = struct {
     }
 };
 
-const Builtins = struct {
+const CBuiltins = struct {
     pub fn @"fn"(comp: *Compiler) CompileError!void {
         const new_node = Node(Func).init(Func{ .name = "", .body = null });
         const new_val = try comp.push(CVal{ .func = new_node });
@@ -214,3 +214,5 @@ pub const Word = union(WordTy) {
         };
     }
 };
+
+const RBuiltins = struct {};
