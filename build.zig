@@ -24,6 +24,10 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
+    const op = b.option(bool, "trace_rt", "trace runtime execution");
+    const shared_ops = b.addOptions();
+    shared_ops.addOption(bool, "trace_rt", op orelse false);
+
     // This declares intent for the executable to be installed into the
     // standard location when the user invokes the "install" step (the default
     // step when running `zig build`).

@@ -23,10 +23,13 @@ pub const CompileError = struct {
     span: ?lex.Span,
 };
 
-pub fn compile(tokens: []const Sp(Token), then: *const fn (Compiled) void) ?CompileError {
+pub fn compile(
+    tokens: []const Sp(Token),
+    on_success: *const fn (Compiled) void,
+) ?CompileError {
     var comp = Compiler{
         .tokens = tokens,
-        .then = then,
+        .on_success = on_success,
         .err = null,
         .data = .{
             .func = null,
@@ -57,7 +60,7 @@ pub const Compiled = struct {
 
 pub const Compiler = struct {
     tokens: []const Sp(Token),
-    then: *const fn (Compiled) void,
+    on_success: *const fn (Compiled) void,
     err: ?CompileError,
     data: Compiled,
 
@@ -154,7 +157,7 @@ pub const Compiler = struct {
         }
 
         // Call continuation
-        self.then(self.data);
+        self.on_success(self.data);
     }
 };
 
