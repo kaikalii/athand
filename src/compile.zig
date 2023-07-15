@@ -14,6 +14,7 @@ pub const Compiler = struct {
     stack_size: usize,
     last_span: ?lex.Span,
     newest_struct: ?*Node(Struct),
+    newest_func: ?*Node(Func),
 
     pub fn init() Compiler {
         return Compiler{
@@ -21,6 +22,7 @@ pub const Compiler = struct {
             .stack_size = 0,
             .last_span = null,
             .newest_struct = null,
+            .newest_func = null,
         };
     }
 
@@ -65,6 +67,20 @@ pub const Compiler = struct {
                     // Others
                     const val = try self.top();
                     switch (val.*) {
+                        CVal.func => |*node| {
+                            const func = &node.val;
+                            if (func.name.len == 0) {
+                                func.name = ident;
+                            } else {
+                                func.body = try self.addWord(func, Word{ .call = ident });
+                            }
+                        },
+                        CVal.word => {
+                            if (self.newest_func) |node| {
+                                const func = &node.val;
+                                func.body = try self.addWord(func, Word{ .call = ident });
+                            }
+                        },
                         CVal.struc => |*node| {
                             const struc = &node.val;
                             if (struc.name.len == 0) {
@@ -81,16 +97,17 @@ pub const Compiler = struct {
                                 field.struc.field_root = try self.newField(ident, field.struc, node);
                             }
                         },
-                        else => {
-                            @panic("TODO: ident on non-struct");
-                        },
                     }
                 },
-                Token.num => |num| _ = try self.push(CVal{ .num = num }),
+                Token.num => |num| {
+                    if (self.newest_func) |node| {
+                        const func = &node.val;
+                        func.body = try self.addWord(func, Word{ .num = num });
+                    }
+                },
             }
         }
         self.finishItem();
-        std.debug.print("stack:\n", .{});
         for (self.stack[0..self.stack_size]) |val| {
             std.debug.print("{}\n", .{val});
         }
@@ -107,16 +124,22 @@ pub const Compiler = struct {
         return &new_val.field;
     }
 
+    fn addWord(self: *Compiler, func: *Func, word: Word) CompileError!*Node(Word) {
+        const new_node = Node(Word).init(word).withNext(func.body);
+        const new_val = try self.push(CVal{ .word = new_node });
+        func.body = &new_val.word;
+        return &new_val.word;
+    }
+
     fn finishItem(self: *Compiler) void {
         const val = self.top() catch return;
         switch (val.*) {
-            CVal.struc => |*node| if (node.val.field_root) |*head| {
-                reverse_list(Field, head);
-            },
-            CVal.field => |node| if (node.val.struc.field_root) |*head| {
-                reverse_list(Field, head);
-            },
-            else => {},
+            CVal.func, CVal.word => if (self.newest_func) |node|
+                if (node.val.body) |*head|
+                    reverse_list(Word, head),
+            CVal.struc, CVal.field => if (self.newest_struct) |node|
+                if (node.val.field_root) |*head|
+                    reverse_list(Field, head),
         }
     }
 
@@ -140,33 +163,41 @@ const Builtins = struct {
     }
 
     pub fn @"fn"(comp: *Compiler) CompileError!void {
-        _ = comp;
+        const new_node = Node(Func).init(Func{ .name = "", .body = null });
+        const new_val = try comp.push(CVal{ .func = new_node });
+        comp.newest_func = &new_val.func;
     }
 };
 
 pub const CTy = enum {
+    func,
+    word,
     struc,
     field,
-    num,
 };
 
 pub const CVal = union(CTy) {
+    func: Node(Func),
+    word: Node(Word),
     struc: Node(Struct),
     field: Node(Field),
-    num: []const u8,
 
     pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) std.os.WriteError!void {
         switch (self) {
-            CVal.struc => |snode| {
-                try writer.print("struct {s}", .{snode.val.name});
-                var field = snode.val.field_root;
-                while (field) |fnode| {
-                    try writer.print("\n  {}", .{fnode.val});
-                    field = fnode.next;
+            CVal.func => |node| {
+                try writer.print("fn {s} ", .{node.val.name});
+                if (node.val.body) |head| {
+                    try writer.print("{}", .{head});
                 }
             },
-            CVal.field => |node| try writer.print("field {}", .{node.val}),
-            CVal.num => |num| try writer.print("num {s}", .{num}),
+            CVal.word => |node| try writer.print("{}", .{node.val}),
+            CVal.struc => |node| {
+                try writer.print("struct {s} ", .{node.val.name});
+                if (node.val.field_root) |head| {
+                    try writer.print("{}", .{head});
+                }
+            },
+            CVal.field => |node| try writer.print("{}", .{node.val}),
         }
     }
 };
@@ -210,6 +241,28 @@ pub fn reverse_list(comptime T: type, head: **Node(T)) void {
     }
     head.* = prev.?;
 }
+
+pub const Func = struct {
+    name: []const u8,
+    body: ?*Node(Word),
+};
+
+pub const WordTy = enum {
+    num,
+    call,
+};
+
+pub const Word = union(WordTy) {
+    num: []const u8,
+    call: []const u8,
+
+    pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) std.os.WriteError!void {
+        return switch (self) {
+            Word.num => |num| writer.print("{s}", .{num}),
+            Word.call => |name| writer.print("{s}", .{name}),
+        };
+    }
+};
 
 pub const Struct = struct {
     name: []const u8,
