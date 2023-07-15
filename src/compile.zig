@@ -39,6 +39,17 @@ pub const Compiled = struct {
     last_item: enum {
         func,
     },
+
+    pub fn findFunction(self: *const Compiled, name: []const u8) ?*const Func {
+        var curr = self.func;
+        while (curr) |func| {
+            if (std.mem.eql(u8, func.val.name, name)) {
+                return &func.val;
+            }
+            curr = func.next;
+        }
+        return null;
+    }
 };
 
 pub const Compiler = struct {
@@ -202,5 +213,3 @@ pub const Word = union(WordTy) {
         };
     }
 };
-
-const RBuiltins = struct {};

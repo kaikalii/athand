@@ -1,6 +1,7 @@
 const std = @import("std");
 const lex = @import("lex.zig");
 const compile = @import("compile.zig");
+const runtime = @import("runtime.zig");
 
 pub fn main() !void {
     const file = try std.fs.cwd().openFile("examples/test.at", .{});
@@ -31,4 +32,7 @@ fn whenCompiled(data: compile.Compiled) void {
         std.debug.print("{}\n", .{f.val});
         func = f.next;
     }
+
+    var rt = runtime.Runtime.init(data);
+    rt.start() catch |err| std.debug.print("{}", .{err});
 }
