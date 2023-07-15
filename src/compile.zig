@@ -57,6 +57,7 @@ pub const Compiler = struct {
                     // Builtins
                     inline for (@typeInfo(Builtins).Struct.decls) |builtin| {
                         if (eql(u8, builtin.name, ident)) {
+                            self.finishItem();
                             try @field(Builtins, builtin.name)(self);
                             continue :tokens;
                         }
@@ -88,7 +89,8 @@ pub const Compiler = struct {
                 Token.num => |num| _ = try self.push(CVal{ .num = num }),
             }
         }
-        std.debug.print("\nstack:\n", .{});
+        self.finishItem();
+        std.debug.print("stack:\n", .{});
         for (self.stack[0..self.stack_size]) |val| {
             std.debug.print("{}\n", .{val});
         }
@@ -103,6 +105,19 @@ pub const Compiler = struct {
         const new_node = Node(Field).init(new_field).withNext(next);
         const new_val = try self.push(CVal{ .field = new_node });
         return &new_val.field;
+    }
+
+    fn finishItem(self: *Compiler) void {
+        const val = self.top() catch return;
+        switch (val.*) {
+            CVal.struc => |*node| if (node.val.field_root) |*head| {
+                reverse_list(Field, head);
+            },
+            CVal.field => |node| if (node.val.struc.field_root) |*head| {
+                reverse_list(Field, head);
+            },
+            else => {},
+        }
     }
 
     pub fn debugError(self: *Compiler, err: CompileError) void {
@@ -167,7 +182,33 @@ pub fn Node(comptime T: type) type {
         pub fn withNext(self: Node(T), next: ?*Node(T)) Node(T) {
             return .{ .val = self.val, .next = next };
         }
+
+        pub fn format(self: @This(), comptime s: []const u8, _: std.fmt.FormatOptions, writer: anytype) std.os.WriteError!void {
+            var this = self;
+            var curr: ?*@This() = &this;
+            try writer.print("[", .{});
+            while (curr) |node| {
+                try writer.print("{" ++ s ++ "}", .{node.val});
+                if (node.next) |_| {
+                    try writer.print(", ", .{});
+                }
+                curr = node.next;
+            }
+            try writer.print("]", .{});
+        }
     };
+}
+
+pub fn reverse_list(comptime T: type, head: **Node(T)) void {
+    var prev: ?*Node(T) = null;
+    var current: ?*Node(T) = head.*;
+    while (current) |curr| {
+        const next = curr.next;
+        curr.next = prev;
+        prev = curr;
+        current = next;
+    }
+    head.* = prev.?;
 }
 
 pub const Struct = struct {
