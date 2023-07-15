@@ -13,7 +13,6 @@ pub const Compiler = struct {
     stack: [1024]CVal,
     stack_size: usize,
     last_span: ?lex.Span,
-    newest_struct: ?*Node(Struct),
     newest_func: ?*Node(Func),
 
     pub fn init() Compiler {
@@ -21,7 +20,6 @@ pub const Compiler = struct {
             .stack = undefined,
             .stack_size = 0,
             .last_span = null,
-            .newest_struct = null,
             .newest_func = null,
         };
     }
@@ -81,22 +79,6 @@ pub const Compiler = struct {
                                 func.body = try self.addWord(func, Word{ .call = ident });
                             }
                         },
-                        CVal.struc => |*node| {
-                            const struc = &node.val;
-                            if (struc.name.len == 0) {
-                                struc.name = ident;
-                            } else {
-                                struc.fields = try self.newField(ident, struc, struc.fields);
-                            }
-                        },
-                        CVal.field => |*node| {
-                            const field = &node.val;
-                            if (field.ty == Ty.undefined) {
-                                field.ty = Ty.fromStr(ident);
-                            } else {
-                                field.struc.fields = try self.newField(ident, field.struc, node);
-                            }
-                        },
                     }
                 },
                 Token.num => |num| {
@@ -113,17 +95,6 @@ pub const Compiler = struct {
         }
     }
 
-    fn newField(self: *Compiler, name: []const u8, struc: *Struct, next: ?*Node(Field)) CompileError!*Node(Field) {
-        const new_field = Field{
-            .struc = struc,
-            .name = name,
-            .ty = Ty.undefined,
-        };
-        const new_node = Node(Field).init(new_field).withNext(next);
-        const new_val = try self.push(CVal{ .field = new_node });
-        return &new_val.field;
-    }
-
     fn addWord(self: *Compiler, func: *Func, word: Word) CompileError!*Node(Word) {
         const new_node = Node(Word).init(word).withNext(func.body);
         const new_val = try self.push(CVal{ .word = new_node });
@@ -137,9 +108,6 @@ pub const Compiler = struct {
             CVal.func, CVal.word => if (self.newest_func) |node|
                 if (node.val.body) |*head|
                     reverse_list(Word, head),
-            CVal.struc, CVal.field => if (self.newest_struct) |node|
-                if (node.val.fields) |*head|
-                    reverse_list(Field, head),
         }
     }
 
@@ -156,12 +124,6 @@ pub const Compiler = struct {
 };
 
 const Builtins = struct {
-    pub fn @"struct"(comp: *Compiler) CompileError!void {
-        const new_node = Node(Struct).init(Struct.init()).withNext(comp.newest_struct);
-        const new_val = try comp.push(CVal{ .struc = new_node });
-        comp.newest_struct = &new_val.struc;
-    }
-
     pub fn @"fn"(comp: *Compiler) CompileError!void {
         const new_node = Node(Func).init(Func{ .name = "", .body = null });
         const new_val = try comp.push(CVal{ .func = new_node });
@@ -172,15 +134,11 @@ const Builtins = struct {
 pub const CTy = enum {
     func,
     word,
-    struc,
-    field,
 };
 
 pub const CVal = union(CTy) {
     func: Node(Func),
     word: Node(Word),
-    struc: Node(Struct),
-    field: Node(Field),
 
     pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) std.os.WriteError!void {
         switch (self) {
@@ -191,13 +149,6 @@ pub const CVal = union(CTy) {
                 }
             },
             CVal.word => |node| try writer.print("{}", .{node.val}),
-            CVal.struc => |node| {
-                try writer.print("struct {s} ", .{node.val.name});
-                if (node.val.fields) |head| {
-                    try writer.print("{}", .{head});
-                }
-            },
-            CVal.field => |node| try writer.print("{}", .{node.val}),
         }
     }
 };
@@ -261,78 +212,5 @@ pub const Word = union(WordTy) {
             Word.num => |num| writer.print("{s}", .{num}),
             Word.call => |name| writer.print("{s}", .{name}),
         };
-    }
-};
-
-pub const Struct = struct {
-    name: []const u8,
-    fields: ?*Node(Field),
-
-    pub fn init() Struct {
-        return .{ .name = "", .fields = null };
-    }
-};
-
-pub const Field = struct {
-    struc: *Struct,
-    name: []const u8,
-    ty: Ty,
-
-    pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) std.os.WriteError!void {
-        return writer.print("{s} {}", .{ self.name, self.ty });
-    }
-};
-
-pub const TyTag = enum { primitive, named, undefined };
-
-pub const Ty = union(TyTag) {
-    primitive: Primitive,
-    named: []const u8,
-    undefined,
-
-    pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) std.os.WriteError!void {
-        return switch (self) {
-            Ty.named => |name| writer.print("{s}", .{name}),
-            Ty.primitive => |prim| writer.print("{}", .{prim}),
-            Ty.undefined => writer.print("undefined", .{}),
-        };
-    }
-
-    pub fn fromStr(s: []const u8) Ty {
-        if (Primitive.fromStr(s)) |prim| {
-            return .{ .primitive = prim };
-        } else {
-            return .{ .named = s };
-        }
-    }
-};
-
-pub const Primitive = enum {
-    u8,
-    u16,
-    u32,
-    u64,
-    usize,
-    i8,
-    i16,
-    i32,
-    i64,
-    isize,
-    f32,
-    f64,
-    bool,
-    void,
-
-    pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) std.os.WriteError!void {
-        return writer.print("{s}", .{@tagName(self)});
-    }
-
-    pub fn fromStr(s: []const u8) ?Primitive {
-        inline for (@typeInfo(Primitive).Enum.fields) |field| {
-            if (std.mem.eql(u8, s, field.name)) {
-                return @field(Primitive, field.name);
-            }
-        }
-        return null;
     }
 };

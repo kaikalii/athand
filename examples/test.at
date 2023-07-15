@@ -4,3 +4,5 @@ struct Loc
     pos u64
 
 fn square dup *
+
+fn main 1 print
