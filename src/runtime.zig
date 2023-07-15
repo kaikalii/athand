@@ -17,9 +17,10 @@ pub const Value = i64;
 pub const Runtime = struct {
     data: compile.Compiled,
     stack: ?*Node(Value),
+    depth: usize,
 
     pub fn init(data: compile.Compiled) Runtime {
-        return Runtime{ .data = data, .stack = null };
+        return Runtime{ .data = data, .stack = null, .depth = 0 };
     }
 
     pub fn start(self: *Runtime) RuntimeError!void {
@@ -27,47 +28,52 @@ pub const Runtime = struct {
         _ = try self.call(main_fn, null);
     }
 
-    fn run(self: *Runtime) RuntimeError!void {
-        _ = self;
+    fn trace(self: *Runtime, comptime s: []const u8, args: anytype) void {
+        for (0..self.depth + 1) |_| {
+            std.debug.print("  ", .{});
+        }
+        std.debug.print(s, args);
     }
 
     fn call(self: *Runtime, func: *const Func, cont: Continue) RuntimeError!void {
         if (func.body) |body| {
+            self.trace("call {}\n", .{func});
+            self.depth += 1;
             try self.then(body);
+            self.depth -= 1;
         }
-        if (cont) |next| {
-            try self.then(next);
-        }
+        try self.then(cont);
     }
 
     fn then(self: *Runtime, cont: Continue) RuntimeError!void {
         if (self.stack) |stack| {
-            std.debug.print("  stack: {}\n", .{stack});
+            self.trace("stack: {}\n", .{stack});
         } else {
-            std.debug.print("  stack: []\n", .{});
+            self.trace("stack: []\n", .{});
         }
         if (cont) |curr| {
             var next: Continue = curr.next;
             switch (curr.val) {
                 .int => |int| {
-                    std.debug.print("  push {}\n", .{int});
+                    self.trace("push {}\n", .{int});
                     var node = Node(Value){ .val = int, .next = self.stack };
                     self.stack = &node;
                 },
                 .builtin => |builtin| {
-                    std.debug.print("  call {}\n", .{builtin});
+                    self.trace("call {}\n", .{builtin});
+                    self.depth += 1;
                     next = try builtin.f(self, curr.next);
+                    self.depth -= 1;
                 },
                 .call => |function| {
-                    std.debug.print("  call {}\n", .{function});
                     return self.call(function.func orelse return error.UnresolvedFunction, next);
+                },
+                .quote => |function| {
+                    self.trace("quote {}\n", .{function});
                 },
             }
             if (next) |nex| {
                 try self.then(nex);
-            } else {
-                std.debug.print("  return\n", .{});
-                try self.run();
             }
         }
     }
@@ -100,12 +106,16 @@ pub const BuiltinFunction = struct {
     }
 };
 pub const CodeFunction = struct {
-    name: []const u8,
+    name: ?[]const u8,
     span: lex.Span,
-    func: ?*const compile.Func,
+    func: ?*compile.Func,
 
     pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) std.os.WriteError!void {
-        return writer.print("{s}", .{self.name});
+        if (self.name) |name| {
+            return writer.print("{s}", .{name});
+        } else {
+            return writer.print("fn at {}", .{self.span.start});
+        }
     }
 };
 pub const Continue = ?*const Node(Word);
