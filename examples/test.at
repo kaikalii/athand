@@ -1,7 +1,3 @@
-struct Loc 
-    line u64
-    col u64
-    pos u64
 
 fn square dup *
 

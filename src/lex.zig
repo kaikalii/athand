@@ -41,6 +41,10 @@ pub const Loc = struct {
     line: usize,
     col: usize,
     pos: usize,
+
+    pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) std.os.WriteError!void {
+        return writer.print("{}:{}", .{ self.line, self.col });
+    }
 };
 
 pub const Span = struct {
@@ -117,7 +121,7 @@ const Lexer = struct {
                         }
                         const name = self.input[start.pos..self.curr.pos];
                         self.addToken(start, Token{ .ident = name });
-                    } else if (isDigit(cp) || cp[0] == '-') {
+                    } else if (isDigit(cp) or cp[0] == '-') {
                         // Integers
                         var got_digit = false;
                         while (true) {
