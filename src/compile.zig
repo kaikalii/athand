@@ -33,7 +33,7 @@ pub fn compile(
         .on_success = on_success,
         .err = null,
         .data = .{
-            .func = null,
+            .functions = List(Func).init(),
             .last_item = .func,
         },
     };
@@ -42,13 +42,13 @@ pub fn compile(
 }
 
 pub const Compiled = struct {
-    func: ?*Node(Func),
+    functions: List(Func),
     last_item: enum {
         func,
     },
 
     pub fn findFunction(self: *const Compiled, name: []const u8) ?*Func {
-        var curr = self.func;
+        var curr = self.functions.head;
         while (curr) |func| {
             if (func.val.name) |fname| {
                 if (std.mem.eql(u8, fname, name)) {
@@ -84,24 +84,27 @@ pub const Compiler = struct {
                 }
                 if (self.unfinishedFunc()) |func| {
                     if (func.val.name) |_| {
-                        var node: ?Node(Word) = null;
+                        var builtin_fn: ?runtime.BuiltinFn = null;
                         inline for (@typeInfo(runtime.RBuiltins).Struct.decls) |decl| {
                             if (std.mem.eql(u8, ident, decl.name)) {
-                                node = .{
-                                    .val = .{ .builtin = .{
-                                        .name = ident,
-                                        .f = @field(runtime.RBuiltins, decl.name),
-                                    } },
-                                    .next = func.val.body,
-                                };
+                                builtin_fn = @field(runtime.RBuiltins, decl.name);
                                 break;
                             }
                         }
-                        var n = node orelse Node(Word){
-                            .val = .{ .call = .{ .name = ident, .span = token.span, .func = null } },
-                            .next = func.val.body,
-                        };
-                        func.val.body = &n;
+                        var node: Node(Word) = undefined;
+                        if (builtin_fn) |f| {
+                            node = Node(Word).init(.{ .builtin = .{
+                                .f = f,
+                                .name = ident,
+                            } });
+                        } else {
+                            node = Node(Word).init(.{ .call = .{
+                                .name = ident,
+                                .span = token.span,
+                                .func = null,
+                            } });
+                        }
+                        func.val.body.push(&node);
                     } else {
                         func.val.name = ident;
                     }
@@ -116,11 +119,8 @@ pub const Compiler = struct {
                         self.err = .{ .kind = CompileErrorKind.InvalidNumber, .span = token.span };
                         return;
                     };
-                    var node = .{
-                        .val = .{ .int = i },
-                        .next = func.val.body,
-                    };
-                    func.val.body = &node;
+                    var node = Node(Word).init(.{ .int = i });
+                    func.val.body.push(&node);
                     self.run();
                 } else {
                     self.err = .{ .kind = CompileErrorKind.UnexpectedToken, .span = token.span };
@@ -141,9 +141,9 @@ pub const Compiler = struct {
         self.finishItem();
 
         // Resolve identifiers
-        var currFunc = self.data.func;
+        var currFunc = self.data.functions.head;
         while (currFunc) |func| {
-            var currWord = func.val.body;
+            var currWord = func.val.body.head;
             while (currWord) |word| {
                 self.resolveIdentifiers(&func.val);
                 currWord = word.next;
@@ -156,7 +156,7 @@ pub const Compiler = struct {
     }
 
     fn resolveIdentifiers(self: *Compiler, func: *Func) void {
-        var currWord = func.body;
+        var currWord = func.body.head;
         while (currWord) |word| {
             switch (word.val) {
                 .call => |*function| {
@@ -176,7 +176,7 @@ pub const Compiler = struct {
     }
 
     fn unfinishedFunc(self: *Compiler) ?*Node(Func) {
-        var curr = self.data.func;
+        var curr = self.data.functions.head;
         while (curr) |func| {
             if (!func.val.is_finished) {
                 return curr;
@@ -190,11 +190,13 @@ pub const Compiler = struct {
 const CBuiltins = struct {
     pub fn @"fn"(comp: *Compiler, span: Span) void {
         comp.finishItem();
-        var func = .{
-            .val = .{ .name = null, .span = span, .body = null, .is_finished = false },
-            .next = comp.data.func,
-        };
-        comp.data.func = &func;
+        var node = Node(Func).init(.{
+            .name = null,
+            .span = span,
+            .body = List(Word).init(),
+            .is_finished = false,
+        });
+        comp.data.functions.push(&node);
         comp.data.last_item = .func;
         comp.run();
     }
@@ -203,11 +205,13 @@ const CBuiltins = struct {
             comp.err = .{ .kind = CompileErrorKind.UnexpectedToken, .span = span };
             return;
         }
-        var func = .{
-            .val = .{ .name = null, .span = span, .body = null, .is_finished = false },
-            .next = comp.data.func,
-        };
-        comp.data.func = &func;
+        var node = Node(Func).init(.{
+            .name = null,
+            .span = span,
+            .body = List(Word).init(),
+            .is_finished = false,
+        });
+        comp.data.functions.push(&node);
         comp.data.last_item = .func;
         comp.run();
     }
@@ -215,11 +219,8 @@ const CBuiltins = struct {
         if (comp.unfinishedFunc()) |func| {
             func.val.finish();
             var parent = comp.unfinishedFunc().?;
-            var node: Node(Word) = .{
-                .val = .{ .quote = .{ .name = null, .span = span, .func = &func.val } },
-                .next = parent.val.body,
-            };
-            parent.val.body = &node;
+            var node = Node(Word).init(.{ .quote = .{ .name = null, .span = span, .func = &func.val } });
+            parent.val.body.push(&node);
             comp.run();
         } else {
             comp.err = .{ .kind = CompileErrorKind.UnexpectedToken, .span = span };
@@ -232,9 +233,50 @@ pub fn Node(comptime T: type) type {
         val: T,
         next: ?*Node(T),
 
+        pub fn init(val: T) @This() {
+            return .{ .val = val, .next = null };
+        }
+    };
+}
+
+pub fn List(comptime T: type) type {
+    return struct {
+        head: ?*Node(T),
+
+        pub fn init() @This() {
+            return .{ .head = null };
+        }
+
+        pub fn push(self: *@This(), node: *Node(T)) void {
+            node.next = self.head;
+            self.head = node;
+        }
+
+        pub fn pop(self: *@This()) ?*Node(T) {
+            if (self.head) |head| {
+                self.head = head.next;
+                return head;
+            } else {
+                return null;
+            }
+        }
+
+        pub fn reverse(self: *@This()) void {
+            if (self.head) |head| {
+                var prev: ?*Node(T) = null;
+                var current: ?*Node(T) = head;
+                while (current) |curr| {
+                    const next = curr.next;
+                    curr.next = prev;
+                    prev = curr;
+                    current = next;
+                }
+                self.head = prev.?;
+            }
+        }
+
         pub fn format(self: @This(), comptime s: []const u8, _: std.fmt.FormatOptions, writer: anytype) std.os.WriteError!void {
-            var this = self;
-            var curr: ?*@This() = &this;
+            var curr = self.head;
             try writer.print("[", .{});
             var i: u8 = 0;
             while (curr) |node| {
@@ -244,7 +286,7 @@ pub fn Node(comptime T: type) type {
                 }
                 curr = node.next;
                 i += 1;
-                if (i > 100) {
+                if (i > 50) {
                     try writer.print("...", .{});
                     break;
                 }
@@ -269,7 +311,7 @@ pub fn reverse_list(comptime T: type, head: **Node(T)) void {
 pub const Func = struct {
     name: ?[]const u8,
     span: Span,
-    body: ?*Node(Word),
+    body: List(Word),
     is_finished: bool,
 
     pub fn format(self: @This(), comptime s: []const u8, _: std.fmt.FormatOptions, writer: anytype) std.os.WriteError!void {
@@ -283,16 +325,12 @@ pub const Func = struct {
         } else {
             try writer.print("fn at {}", .{self.span.start});
         }
-        if (self.body) |body| {
-            try writer.print(" {}", .{body});
-        }
+        try writer.print(" {}", .{self.body});
     }
 
     pub fn finish(self: *Func) void {
         self.is_finished = true;
-        if (self.body) |*body| {
-            reverse_list(Word, body);
-        }
+        self.body.reverse();
     }
 };
 

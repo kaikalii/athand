@@ -2,6 +2,7 @@ const std = @import("std");
 const lex = @import("lex.zig");
 const compile = @import("compile.zig");
 const Node = compile.Node;
+const List = compile.List;
 const Func = compile.Func;
 const Word = compile.Word;
 
@@ -16,16 +17,22 @@ pub const Value = i64;
 
 pub const Runtime = struct {
     data: compile.Compiled,
-    stack: ?*Node(Value),
+    stack: List(Value),
     depth: usize,
+    call_stack: List(Words),
 
     pub fn init(data: compile.Compiled) Runtime {
-        return Runtime{ .data = data, .stack = null, .depth = 0 };
+        return Runtime{
+            .data = data,
+            .stack = List(Value).init(),
+            .depth = 0,
+            .call_stack = List(Words).init(),
+        };
     }
 
     pub fn start(self: *Runtime) RuntimeError!void {
         const main_fn = self.data.findFunction("main") orelse return error.NoMainFunction;
-        _ = try self.call(main_fn, null);
+        try self.call(main_fn);
     }
 
     fn trace(self: *Runtime, comptime s: []const u8, args: anytype) void {
@@ -34,66 +41,63 @@ pub const Runtime = struct {
         for (0..self.depth + 1) |_| {
             std.debug.print("  ", .{});
         }
-        std.debug.print(s, args);
+        std.debug.print(s ++ "\n", args);
     }
 
-    fn trace_stack(self: *Runtime) void {
-        if (self.stack) |stack| {
-            self.trace("stack: {}\n", .{stack});
-        } else {
-            self.trace("stack: []\n", .{});
-        }
+    fn call(self: *Runtime, func: *const Func) RuntimeError!void {
+        self.trace("call {s}", .{func});
+        self.depth += 1;
+        try self.execWords(func.body);
+        self.depth -= 1;
+        self.trace("return", .{});
     }
 
-    fn call(self: *Runtime, func: *const Func, cont: Continue) RuntimeError!void {
-        if (func.body) |body| {
-            self.trace("call {s}\n", .{func});
-            self.depth += 1;
-            try self.then2(body, cont);
-            self.depth -= 1;
-            self.trace("return\n", .{});
-        } else {
-            try self.then(cont);
-        }
+    fn execWords(self: *Runtime, words: Words) RuntimeError!void {
+        var node = Node(Words).init(words);
+        self.call_stack.push(&node);
+        self.trace("push call stack {}", .{words});
+        try self.execStack();
     }
 
-    fn then(self: *Runtime, cont: Continue) RuntimeError!void {
-        return self.then2(cont, null);
-    }
-
-    fn then2(self: *Runtime, cont: Continue, cont2: Continue) RuntimeError!void {
-        self.trace_stack();
-        if (cont) |curr| {
-            var next: Continue = curr.next;
-            switch (curr.val) {
-                .int => |int| {
-                    self.trace("push {}\n", .{int});
-                    var node = Node(Value){ .val = int, .next = self.stack };
-                    self.stack = &node;
-                },
-                .builtin => |builtin| {
-                    self.trace("call {}\n", .{builtin});
-                    next = try builtin.f(self, curr.next);
-                },
-                .call => |function| {
-                    return self.call(function.func orelse return error.UnresolvedFunction, next);
-                },
-                .quote => |function| {
-                    self.trace("quote {}\n", .{function});
-                },
-            }
-            if (next) |nex| {
-                try self.then(nex);
+    fn execStack(self: *Runtime) RuntimeError!void {
+        self.trace("execStack stack: {}", .{self.stack});
+        while (true) {
+            if (self.call_stack.head) |call_node| {
+                if (call_node.val.pop()) |word| {
+                    try self.execWord(word.val);
+                } else {
+                    _ = self.call_stack.pop();
+                    self.trace("pop call stack", .{});
+                }
+            } else {
+                break;
             }
         }
-        if (cont2) |curr| {
-            try self.then(curr);
+    }
+
+    fn execWord(self: *Runtime, word: Word) RuntimeError!void {
+        self.trace("execWord stack:  {}", .{self.stack});
+        switch (word) {
+            .int => |int| {
+                self.trace("push {}", .{int});
+                var node = Node(Value).init(int);
+                self.stack.push(&node);
+            },
+            .builtin => |builtin| {
+                self.trace("call {}", .{builtin});
+                try builtin.f(self);
+            },
+            .call => |function| {
+                return self.call(function.func orelse return error.UnresolvedFunction);
+            },
+            .quote => |function| {
+                self.trace("quote {}", .{function});
+            },
         }
     }
 
     fn pop(self: *Runtime) !Value {
-        if (self.stack) |node| {
-            self.stack = node.next;
+        if (self.stack.pop()) |node| {
             return node.val;
         } else {
             return error.StackUnderflow;
@@ -101,7 +105,7 @@ pub const Runtime = struct {
     }
 
     fn top(self: *Runtime) !*Value {
-        if (self.stack) |node| {
+        if (self.stack.head) |node| {
             return &node.val;
         } else {
             return error.StackUnderflow;
@@ -109,7 +113,7 @@ pub const Runtime = struct {
     }
 };
 
-pub const BuiltinFn = *const fn (*Runtime, Continue) RuntimeError!Continue;
+pub const BuiltinFn = *const fn (*Runtime) RuntimeError!void;
 pub const BuiltinFunction = struct {
     name: []const u8,
     f: BuiltinFn,
@@ -131,89 +135,76 @@ pub const CodeFunction = struct {
         }
     }
 };
-pub const Continue = ?*const Node(Word);
+pub const Words = List(Word);
 
 pub const RBuiltins = struct {
-    pub fn dup(rt: *Runtime, cont: Continue) RuntimeError!Continue {
+    pub fn dup(rt: *Runtime) RuntimeError!void {
         const val = try rt.pop();
-        var a = Node(Value){ .val = val, .next = rt.stack };
-        var b = Node(Value){ .val = val, .next = &a };
-        rt.stack = &b;
-        _ = try rt.then(cont);
-        return null;
+        var a = Node(Value).init(val);
+        var b = Node(Value).init(val);
+        rt.stack.push(&a);
+        rt.stack.push(&b);
+        try rt.execStack();
     }
-    pub fn drop(rt: *Runtime, cont: Continue) RuntimeError!Continue {
+    pub fn drop(rt: *Runtime) RuntimeError!void {
         _ = try rt.pop();
-        return cont;
     }
-    pub fn @"+"(rt: *Runtime, cont: Continue) RuntimeError!Continue {
+    pub fn @"+"(rt: *Runtime) RuntimeError!void {
         const a = try rt.pop();
         var b = try rt.top();
         b.* += a;
-        return cont;
     }
-    pub fn @"-"(rt: *Runtime, cont: Continue) RuntimeError!Continue {
+    pub fn @"-"(rt: *Runtime) RuntimeError!void {
         const a = try rt.pop();
         var b = try rt.top();
         b.* -= a;
-        return cont;
     }
-    pub fn @"*"(rt: *Runtime, cont: Continue) RuntimeError!Continue {
+    pub fn @"*"(rt: *Runtime) RuntimeError!void {
         const a = try rt.pop();
         var b = try rt.top();
         b.* *= a;
-        return cont;
     }
-    pub fn @"/"(rt: *Runtime, cont: Continue) RuntimeError!Continue {
+    pub fn @"/"(rt: *Runtime) RuntimeError!void {
         const a = try rt.pop();
         var b = try rt.top();
         b.* = @divExact(b.*, a);
-        return cont;
     }
-    pub fn @"=="(rt: *Runtime, cont: Continue) RuntimeError!Continue {
+    pub fn @"=="(rt: *Runtime) RuntimeError!void {
         const a = try rt.pop();
         var b = try rt.top();
         b.* = @intFromBool(b.* == a);
-        return cont;
     }
-    pub fn @"!="(rt: *Runtime, cont: Continue) RuntimeError!Continue {
+    pub fn @"!="(rt: *Runtime) RuntimeError!void {
         const a = try rt.pop();
         var b = try rt.top();
         b.* = @intFromBool(b.* != a);
-        return cont;
     }
-    pub fn @"<"(rt: *Runtime, cont: Continue) RuntimeError!Continue {
+    pub fn @"<"(rt: *Runtime) RuntimeError!void {
         const a = try rt.pop();
         var b = try rt.top();
         b.* = @intFromBool(b.* < a);
-        return cont;
     }
-    pub fn @"<="(rt: *Runtime, cont: Continue) RuntimeError!Continue {
+    pub fn @"<="(rt: *Runtime) RuntimeError!void {
         const a = try rt.pop();
         var b = try rt.top();
         b.* = @intFromBool(b.* <= a);
-        return cont;
     }
-    pub fn @">"(rt: *Runtime, cont: Continue) RuntimeError!Continue {
+    pub fn @">"(rt: *Runtime) RuntimeError!void {
         const a = try rt.pop();
         var b = try rt.top();
         b.* = @intFromBool(b.* > a);
-        return cont;
     }
-    pub fn @">="(rt: *Runtime, cont: Continue) RuntimeError!Continue {
+    pub fn @">="(rt: *Runtime) RuntimeError!void {
         const a = try rt.pop();
         var b = try rt.top();
         b.* = @intFromBool(b.* >= a);
-        return cont;
     }
-    pub fn print(rt: *Runtime, cont: Continue) RuntimeError!Continue {
+    pub fn print(rt: *Runtime) RuntimeError!void {
         const val = try rt.pop();
         std.debug.print("{d}", .{val});
-        return cont;
     }
-    pub fn println(rt: *Runtime, cont: Continue) RuntimeError!Continue {
+    pub fn println(rt: *Runtime) RuntimeError!void {
         const val = try rt.pop();
         std.debug.print("{d}\n", .{val});
-        return cont;
     }
 };

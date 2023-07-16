@@ -27,7 +27,7 @@ pub fn main() !void {
 }
 
 fn whenCompiled(data: compile.Compiled) void {
-    var func = data.func;
+    var func = data.functions.head;
     while (func) |f| {
         std.debug.print("{}\n", .{f.val});
         func = f.next;
