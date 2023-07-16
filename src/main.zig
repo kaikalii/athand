@@ -39,3 +39,7 @@ fn whenCompiled(data: compile.Compiled) void {
     var rt = runtime.Runtime.init(data);
     if (rt.start()) |err| std.debug.print("{}", .{err});
 }
+
+test {
+    _ = @import("runtime.zig");
+}

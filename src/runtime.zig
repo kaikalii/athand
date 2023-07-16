@@ -11,27 +11,39 @@ const Word = compile.Word;
 pub const trace_rt = @import("shared_ops").trace_rt;
 
 pub const RuntimeErrorKind = enum {
-    NoMainFunction,
-    StackUnderflow,
-    UnknownFunction,
-    UnresolvedFunction,
+    no_main_function,
+    stack_underflow,
+    unresolved_function,
+    mismatched_types,
+};
+
+pub const RuntimeErrorCause = union(RuntimeErrorKind) {
+    no_main_function,
+    stack_underflow,
+    unresolved_function,
+    mismatched_types: struct {
+        expected: []const u8,
+        actual: []const u8,
+    },
 
     pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) std.os.WriteError!void {
-        switch (self) {
-            .NoMainFunction => return writer.print("no main function", .{}),
-            .StackUnderflow => return writer.print("stack underflow", .{}),
-            .UnknownFunction => return writer.print("unknown function", .{}),
-            .UnresolvedFunction => return writer.print("unresolved function", .{}),
-        }
+        return switch (self) {
+            .no_main_function => writer.print("no main function", .{}),
+            .stack_underflow => writer.print("stack underflow", .{}),
+            .unresolved_function => writer.print("unresolved function", .{}),
+            .mismatched_types => |types| {
+                return writer.print("mismatched types: expected {s}, got {s}", .{ types.expected, types.actual });
+            },
+        };
     }
 };
 
 pub const RuntimeError = struct {
-    kind: RuntimeErrorKind,
+    cause: RuntimeErrorCause,
     span: ?Span,
 
     pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) std.os.WriteError!void {
-        try writer.print("{}", .{self.kind});
+        try writer.print("{}", .{self.cause});
         if (self.span) |span| {
             try writer.print(" at {}", .{span.start});
         }
@@ -46,8 +58,10 @@ pub const Ty = enum {
     code_func,
 };
 
+pub const Int = i62;
+
 pub const Value = union(Ty) {
-    int: i64,
+    int: Int,
     builtin_func: *const BuiltinFunction,
     code_func: *const CodeFunction,
 
@@ -60,12 +74,18 @@ pub const Value = union(Ty) {
     }
 };
 
+test "value size" {
+    const size = @sizeOf(Value);
+    const expected_size = std.math.ceilPowerOfTwo(usize, @sizeOf(Ty) + @sizeOf(Int));
+    try std.testing.expectEqual(expected_size, size);
+}
+
 pub const Runtime = struct {
     data: compile.Compiled,
     stack: List(Value),
     depth: usize,
     call_stack: List(Words),
-    err: ?RuntimeErrorKind,
+    err: ?RuntimeErrorCause,
     last_span: ?Span,
 
     pub fn init(data: compile.Compiled) Runtime {
@@ -82,14 +102,14 @@ pub const Runtime = struct {
     pub fn start(self: *Runtime) ?RuntimeError {
         const main_fn = self.data.findFunction("main") orelse {
             return .{
-                .kind = .NoMainFunction,
+                .cause = .no_main_function,
                 .span = null,
             };
         };
         self.call(main_fn) catch {};
         if (self.err) |err| {
             return .{
-                .kind = err,
+                .cause = err,
                 .span = self.last_span,
             };
         }
@@ -152,12 +172,15 @@ pub const Runtime = struct {
             },
             .call => |function| {
                 return self.call(function.func orelse {
-                    self.err = .UnknownFunction;
+                    self.err = .unresolved_function;
                     return error.err;
                 });
             },
-            .quote => |function| {
-                self.trace("quote {}", .{function});
+            .quote => |*function| {
+                self.trace("push {}", .{function});
+                var node = Node(Value).init(.{ .code_func = function });
+                self.stack.push(&node);
+                try self.execStack();
             },
         }
     }
@@ -166,38 +189,57 @@ pub const Runtime = struct {
         if (self.stack.pop()) |node| {
             return node.val;
         } else {
-            self.err = .StackUnderflow;
+            self.err = .stack_underflow;
             return error.err;
         }
     }
 
     fn pop(self: *Runtime, comptime T: type) UnitError!T {
         const val = try self.popValue();
-        inline for (@typeInfo(Value).Union.fields) |field| {
-            if (field.type == T) {
-                return @field(val, field.name);
-            }
-        }
+        const type_name = switch (val) {
+            .int => |int| if (T == Int) return int else "int",
+            .builtin_func => |builtin| if (T == *const BuiltinFunction) return builtin else "function",
+            .code_func => |code| if (T == *const CodeFunction) return code else "function",
+        };
+        self.err = .{ .mismatched_types = .{
+            .expected = friendlyTypeName(T),
+            .actual = type_name,
+        } };
+        return error.err;
     }
 
     fn topValue(self: *Runtime) UnitError!*Value {
         if (self.stack.head) |node| {
             return &node.val;
         } else {
-            self.err = .StackUnderflow;
+            self.err = .stack_underflow;
             return error.err;
         }
     }
 
     fn top(self: *Runtime, comptime T: type) UnitError!*T {
         const val = try self.topValue();
-        inline for (@typeInfo(Value).Union.fields) |field| {
-            if (field.type == T) {
-                return &@field(val, field.name);
-            }
-        }
+        const type_name = switch (val.*) {
+            .int => |*int| if (T == Int) return int else "int",
+            .builtin_func => |*builtin| if (T == *const BuiltinFunction) return builtin else "function",
+            .code_func => |*code| if (T == *const CodeFunction) return code else "function",
+        };
+        self.err = .{ .mismatched_types = .{
+            .expected = friendlyTypeName(T),
+            .actual = type_name,
+        } };
+        return error.err;
     }
 };
+
+fn friendlyTypeName(comptime T: type) []const u8 {
+    return switch (T) {
+        Int => "int",
+        *const BuiltinFunction => "function",
+        *const CodeFunction => "function",
+        else => @compileError("non-value type"),
+    };
+}
 
 pub const BuiltinFn = *const fn (*Runtime) UnitError!void;
 pub const BuiltinFunction = struct {
@@ -236,62 +278,62 @@ pub const RBuiltins = struct {
         _ = try rt.popValue();
     }
     pub fn @"+"(rt: *Runtime) UnitError!void {
-        const b = try rt.pop(i64);
-        var a = try rt.top(i64);
+        const b = try rt.pop(Int);
+        var a = try rt.top(Int);
         a.* += b;
     }
     pub fn @"-"(rt: *Runtime) UnitError!void {
-        const b = try rt.pop(i64);
-        var a = try rt.top(i64);
+        const b = try rt.pop(Int);
+        var a = try rt.top(Int);
         a.* -= b;
     }
     pub fn @"*"(rt: *Runtime) UnitError!void {
-        const b = try rt.pop(i64);
-        var a = try rt.top(i64);
+        const b = try rt.pop(Int);
+        var a = try rt.top(Int);
         a.* *= b;
     }
     pub fn @"/"(rt: *Runtime) UnitError!void {
-        const b = try rt.pop(i64);
-        var a = try rt.top(i64);
+        const b = try rt.pop(Int);
+        var a = try rt.top(Int);
         rt.trace("div {} / {}", .{ a.*, b });
         a.* = @divTrunc(a.*, b);
     }
     pub fn @"=="(rt: *Runtime) UnitError!void {
-        const b = try rt.pop(i64);
-        var a = try rt.top(i64);
+        const b = try rt.pop(Int);
+        var a = try rt.top(Int);
         a.* = @intFromBool(a.* == b);
     }
     pub fn @"!="(rt: *Runtime) UnitError!void {
-        const b = try rt.pop(i64);
-        var a = try rt.top(i64);
+        const b = try rt.pop(Int);
+        var a = try rt.top(Int);
         a.* = @intFromBool(a.* != b);
     }
     pub fn @"<"(rt: *Runtime) UnitError!void {
-        const b = try rt.pop(i64);
-        var a = try rt.top(i64);
+        const b = try rt.pop(Int);
+        var a = try rt.top(Int);
         a.* = @intFromBool(a.* < b);
     }
     pub fn @"<="(rt: *Runtime) UnitError!void {
-        const b = try rt.pop(i64);
-        var a = try rt.top(i64);
+        const b = try rt.pop(Int);
+        var a = try rt.top(Int);
         a.* = @intFromBool(a.* <= b);
     }
     pub fn @">"(rt: *Runtime) UnitError!void {
-        const b = try rt.pop(i64);
-        var a = try rt.top(i64);
+        const b = try rt.pop(Int);
+        var a = try rt.top(Int);
         a.* = @intFromBool(a.* > b);
     }
     pub fn @">="(rt: *Runtime) UnitError!void {
-        const b = try rt.pop(i64);
-        var a = try rt.top(i64);
+        const b = try rt.pop(Int);
+        var a = try rt.top(Int);
         a.* = @intFromBool(a.* >= b);
     }
     pub fn print(rt: *Runtime) UnitError!void {
-        const val = try rt.pop(i64);
+        const val = try rt.pop(Int);
         std.debug.print("{}", .{val});
     }
     pub fn println(rt: *Runtime) UnitError!void {
-        const val = try rt.pop(i64);
+        const val = try rt.pop(Int);
         std.debug.print("{}\n", .{val});
     }
 };

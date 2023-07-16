@@ -4,17 +4,18 @@ const runtime = @import("runtime.zig");
 const Token = lex.Token;
 const Sp = lex.Sp;
 const Span = lex.Span;
+const Int = runtime.Int;
 
 pub const CompileErrorKind = enum {
-    UnexpectedToken,
-    InvalidNumber,
-    UnknownFunction,
+    unexpected_token,
+    invalid_number,
+    unknown_function,
 
     pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) std.os.WriteError!void {
         return switch (self) {
-            CompileErrorKind.UnexpectedToken => writer.print("unexpected token", .{}),
-            CompileErrorKind.InvalidNumber => writer.print("invalid number", .{}),
-            CompileErrorKind.UnknownFunction => writer.print("unknown function", .{}),
+            CompileErrorKind.unexpected_token => writer.print("unexpected token", .{}),
+            CompileErrorKind.invalid_number => writer.print("invalid number", .{}),
+            CompileErrorKind.unknown_function => writer.print("unknown function", .{}),
         };
     }
 };
@@ -34,7 +35,6 @@ pub fn compile(
         .err = null,
         .data = .{
             .functions = List(Func).init(),
-            .last_item = .func,
         },
     };
     comp.run();
@@ -43,9 +43,6 @@ pub fn compile(
 
 pub const Compiled = struct {
     functions: List(Func),
-    last_item: enum {
-        func,
-    },
 
     pub fn findFunction(self: *const Compiled, name: []const u8) ?*Func {
         var curr = self.functions.head;
@@ -114,30 +111,28 @@ pub const Compiler = struct {
                     }
                     self.run();
                 } else {
-                    self.err = .{ .kind = CompileErrorKind.UnexpectedToken, .span = token.span };
+                    self.err = .{ .kind = CompileErrorKind.unexpected_token, .span = token.span };
                 }
             },
             Token.num => |num| {
                 if (self.unfinishedFunc()) |func| {
-                    const i = std.fmt.parseInt(i64, num, 10) catch {
-                        self.err = .{ .kind = CompileErrorKind.InvalidNumber, .span = token.span };
+                    const i = std.fmt.parseInt(Int, num, 10) catch {
+                        self.err = .{ .kind = CompileErrorKind.invalid_number, .span = token.span };
                         return;
                     };
                     var node = Node(Sp(Word)).init(.{ .val = .{ .int = i }, .span = token.span });
                     func.val.body.push(&node);
                     self.run();
                 } else {
-                    self.err = .{ .kind = CompileErrorKind.UnexpectedToken, .span = token.span };
+                    self.err = .{ .kind = CompileErrorKind.unexpected_token, .span = token.span };
                 }
             },
         }
     }
 
     fn finishItem(self: *Compiler) void {
-        switch (self.data.last_item) {
-            .func => if (self.unfinishedFunc()) |func|
-                func.val.finish(),
-        }
+        if (self.unfinishedFunc()) |func|
+            func.val.finish();
     }
 
     fn finish(self: *Compiler) void {
@@ -168,7 +163,7 @@ pub const Compiler = struct {
                         self.resolveIdentifiers(child);
                     } else if (function.name) |name| {
                         function.func = self.data.findFunction(name) orelse {
-                            self.err = .{ .kind = CompileErrorKind.UnknownFunction, .span = function.span };
+                            self.err = .{ .kind = CompileErrorKind.unknown_function, .span = function.span };
                             return;
                         };
                     }
@@ -201,12 +196,11 @@ const CBuiltins = struct {
             .is_finished = false,
         });
         comp.data.functions.push(&node);
-        comp.data.last_item = .func;
         comp.run();
     }
     pub fn @"["(comp: *Compiler, span: Span) void {
         if (comp.unfinishedFunc()) |_| {} else {
-            comp.err = .{ .kind = CompileErrorKind.UnexpectedToken, .span = span };
+            comp.err = .{ .kind = CompileErrorKind.unexpected_token, .span = span };
             return;
         }
         var node = Node(Func).init(.{
@@ -216,7 +210,6 @@ const CBuiltins = struct {
             .is_finished = false,
         });
         comp.data.functions.push(&node);
-        comp.data.last_item = .func;
         comp.run();
     }
     pub fn @"]"(comp: *Compiler, span: Span) void {
@@ -230,7 +223,7 @@ const CBuiltins = struct {
             parent.val.body.push(&node);
             comp.run();
         } else {
-            comp.err = .{ .kind = CompileErrorKind.UnexpectedToken, .span = span };
+            comp.err = .{ .kind = CompileErrorKind.unexpected_token, .span = span };
         }
     }
 };
@@ -356,7 +349,7 @@ pub const WordTy = enum {
 };
 
 pub const Word = union(WordTy) {
-    int: i64,
+    int: Int,
     builtin: runtime.BuiltinFunction,
     call: runtime.CodeFunction,
     quote: runtime.CodeFunction,
