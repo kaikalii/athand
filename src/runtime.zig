@@ -220,8 +220,18 @@ pub const Runtime = struct {
         }
     }
 
+    fn topValue2(self: *Runtime) UnitError!struct { a: *Value, b: *Value } {
+        if (self.stack.head) |b| {
+            if (b.next) |a| {
+                return .{ .a = &a.val, .b = &b.val };
+            }
+        }
+        self.err = .stack_underflow;
+        return error.err;
+    }
+
     fn top(self: *Runtime, comptime T: type) UnitError!*T {
-        const type_name = switch (self.topValue().*) {
+        const type_name = switch ((try self.topValue()).*) {
             .int => |*int| if (T == Int) return int else "int",
             .builtin_func => |*builtin| if (T == *const BuiltinFunction) return builtin else "function",
             .code_func => |*code| if (T == *const CodeFunction) return code else "function",
@@ -234,7 +244,7 @@ pub const Runtime = struct {
     }
 
     fn callTopValue(self: *Runtime) UnitError!void {
-        switch (self.topValue().*) {
+        switch ((try self.topValue()).*) {
             .int => {},
             else => try self.callValue(self.popValue() catch unreachable),
         }
@@ -327,13 +337,8 @@ pub const RBuiltins = struct {
         try rt.execStack();
     }
     pub fn swap(rt: *Runtime) UnitError!void {
-        const a = try rt.popValue();
-        const b = try rt.popValue();
-        var a_node = Node(Value).init(a);
-        var b_node = Node(Value).init(b);
-        rt.stack.push(&a_node);
-        rt.stack.push(&b_node);
-        try rt.execStack();
+        var pair = try rt.topValue2();
+        std.mem.swap(Value, pair.a, pair.b);
     }
     pub fn drop(rt: *Runtime) UnitError!void {
         _ = try rt.popValue();

@@ -1,4 +1,4 @@
-fn main 10 fib println
+fn main 14 fib println
 
 fn fib
     dup 2 <
