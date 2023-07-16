@@ -1,9 +1,1 @@
-fn main 14 fib println
-
-fn fib
-    dup 2 <
-    [] [
-        dup 1 - fib
-        swap 2 - fib
-        +
-    ] if
+fn main 1 2 3 debug

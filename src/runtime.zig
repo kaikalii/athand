@@ -337,8 +337,17 @@ pub const RBuiltins = struct {
         try rt.execStack();
     }
     pub fn swap(rt: *Runtime) UnitError!void {
-        var pair = try rt.topValue2();
+        const pair = try rt.topValue2();
         std.mem.swap(Value, pair.a, pair.b);
+    }
+    pub fn over(rt: *Runtime) UnitError!void {
+        const pair = try rt.topValue2();
+        var duped = Node(Value).init(pair.a.*);
+        rt.stack.push(&duped);
+        try rt.execStack();
+    }
+    pub fn debug(rt: *Runtime) UnitError!void {
+        std.debug.print("{}", .{rt.stack});
     }
     pub fn drop(rt: *Runtime) UnitError!void {
         _ = try rt.popValue();
