@@ -74,6 +74,11 @@ pub const Value = union(Ty) {
     }
 };
 
+pub const FunctionType = enum {
+    builtin,
+    code,
+};
+
 test "value size" {
     const size = @sizeOf(Value);
     const expected_size = std.math.ceilPowerOfTwo(usize, @sizeOf(Ty) + @sizeOf(Int));
@@ -266,6 +271,23 @@ pub const CodeFunction = struct {
 pub const Words = List(Sp(Word));
 
 pub const RBuiltins = struct {
+    pub fn call(rt: *Runtime) UnitError!void {
+        const val = try rt.topValue();
+        switch (val.*) {
+            .int => {},
+            .builtin_func => |func| {
+                _ = rt.popValue() catch unreachable;
+                try func.f(rt);
+            },
+            .code_func => |func| {
+                _ = rt.popValue() catch unreachable;
+                try rt.call(func.func orelse {
+                    rt.err = .unresolved_function;
+                    return error.err;
+                });
+            },
+        }
+    }
     pub fn dup(rt: *Runtime) UnitError!void {
         const val = try rt.popValue();
         var a = Node(Value).init(val);
