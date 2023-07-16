@@ -236,12 +236,18 @@ pub fn Node(comptime T: type) type {
             var this = self;
             var curr: ?*@This() = &this;
             try writer.print("[", .{});
+            var i: u8 = 0;
             while (curr) |node| {
                 try writer.print("{" ++ s ++ "}", .{node.val});
                 if (node.next) |_| {
                     try writer.print(", ", .{});
                 }
                 curr = node.next;
+                i += 1;
+                if (i > 100) {
+                    try writer.print("...", .{});
+                    break;
+                }
             }
             try writer.print("]", .{});
         }
@@ -266,9 +272,14 @@ pub const Func = struct {
     body: ?*Node(Word),
     is_finished: bool,
 
-    pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) std.os.WriteError!void {
+    pub fn format(self: @This(), comptime s: []const u8, _: std.fmt.FormatOptions, writer: anytype) std.os.WriteError!void {
         if (self.name) |name| {
-            try writer.print("fn {s}", .{name});
+            if (std.mem.eql(u8, s, "s")) {
+                try writer.print("{s}", .{name});
+                return;
+            } else {
+                try writer.print("fn {s}", .{name});
+            }
         } else {
             try writer.print("fn at {}", .{self.span.start});
         }

@@ -29,28 +29,40 @@ pub const Runtime = struct {
     }
 
     fn trace(self: *Runtime, comptime s: []const u8, args: anytype) void {
+        if (!@import("shared_ops").trace_rt)
+            return;
         for (0..self.depth + 1) |_| {
             std.debug.print("  ", .{});
         }
         std.debug.print(s, args);
     }
 
-    fn call(self: *Runtime, func: *const Func, cont: Continue) RuntimeError!void {
-        if (func.body) |body| {
-            self.trace("call {}\n", .{func});
-            self.depth += 1;
-            try self.then(body);
-            self.depth -= 1;
-        }
-        try self.then(cont);
-    }
-
-    fn then(self: *Runtime, cont: Continue) RuntimeError!void {
+    fn trace_stack(self: *Runtime) void {
         if (self.stack) |stack| {
             self.trace("stack: {}\n", .{stack});
         } else {
             self.trace("stack: []\n", .{});
         }
+    }
+
+    fn call(self: *Runtime, func: *const Func, cont: Continue) RuntimeError!void {
+        if (func.body) |body| {
+            self.trace("call {s}\n", .{func});
+            self.depth += 1;
+            try self.then2(body, cont);
+            self.depth -= 1;
+            self.trace("return\n", .{});
+        } else {
+            try self.then(cont);
+        }
+    }
+
+    fn then(self: *Runtime, cont: Continue) RuntimeError!void {
+        return self.then2(cont, null);
+    }
+
+    fn then2(self: *Runtime, cont: Continue, cont2: Continue) RuntimeError!void {
+        self.trace_stack();
         if (cont) |curr| {
             var next: Continue = curr.next;
             switch (curr.val) {
@@ -61,9 +73,7 @@ pub const Runtime = struct {
                 },
                 .builtin => |builtin| {
                     self.trace("call {}\n", .{builtin});
-                    self.depth += 1;
                     next = try builtin.f(self, curr.next);
-                    self.depth -= 1;
                 },
                 .call => |function| {
                     return self.call(function.func orelse return error.UnresolvedFunction, next);
@@ -75,6 +85,9 @@ pub const Runtime = struct {
             if (next) |nex| {
                 try self.then(nex);
             }
+        }
+        if (cont2) |curr| {
+            try self.then(curr);
         }
     }
 
