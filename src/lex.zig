@@ -129,6 +129,17 @@ const Lexer = struct {
                         } else {
                             self.addToken(start, Token{ .ident = cp });
                         }
+                    } else if (cp[0] == '/') {
+                        // Comments or division
+                        if (self.currChar() == '/') {
+                            // Comment
+                            while (self.next()) |c| {
+                                if (c[0] == '\n') break;
+                            }
+                        } else {
+                            // Division
+                            self.addToken(start, Token{ .ident = cp });
+                        }
                     } else if (cp[0] > ' ') {
                         // Other characters
                         self.addToken(start, Token{ .ident = cp });

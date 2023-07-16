@@ -1,3 +1,2 @@
 
-fn main 2 square square println
-fn square [5] dup *
+fn main 12 -5 / println

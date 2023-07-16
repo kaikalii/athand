@@ -82,6 +82,7 @@ pub const Runtime = struct {
                 self.trace("push {}", .{int});
                 var node = Node(Value).init(int);
                 self.stack.push(&node);
+                try self.execStack();
             },
             .builtin => |builtin| {
                 self.trace("call {}", .{builtin});
@@ -150,54 +151,55 @@ pub const RBuiltins = struct {
         _ = try rt.pop();
     }
     pub fn @"+"(rt: *Runtime) RuntimeError!void {
-        const a = try rt.pop();
-        var b = try rt.top();
-        b.* += a;
+        const b = try rt.pop();
+        var a = try rt.top();
+        a.* += b;
     }
     pub fn @"-"(rt: *Runtime) RuntimeError!void {
-        const a = try rt.pop();
-        var b = try rt.top();
-        b.* -= a;
+        const b = try rt.pop();
+        var a = try rt.top();
+        a.* -= b;
     }
     pub fn @"*"(rt: *Runtime) RuntimeError!void {
-        const a = try rt.pop();
-        var b = try rt.top();
-        b.* *= a;
+        const b = try rt.pop();
+        var a = try rt.top();
+        a.* *= b;
     }
     pub fn @"/"(rt: *Runtime) RuntimeError!void {
-        const a = try rt.pop();
-        var b = try rt.top();
-        b.* = @divExact(b.*, a);
+        const b = try rt.pop();
+        var a = try rt.top();
+        rt.trace("div {} / {}", .{ a.*, b });
+        a.* = @divTrunc(a.*, b);
     }
     pub fn @"=="(rt: *Runtime) RuntimeError!void {
-        const a = try rt.pop();
-        var b = try rt.top();
-        b.* = @intFromBool(b.* == a);
+        const b = try rt.pop();
+        var a = try rt.top();
+        a.* = @intFromBool(a.* == b);
     }
     pub fn @"!="(rt: *Runtime) RuntimeError!void {
-        const a = try rt.pop();
-        var b = try rt.top();
-        b.* = @intFromBool(b.* != a);
+        const b = try rt.pop();
+        var a = try rt.top();
+        a.* = @intFromBool(a.* != b);
     }
     pub fn @"<"(rt: *Runtime) RuntimeError!void {
-        const a = try rt.pop();
-        var b = try rt.top();
-        b.* = @intFromBool(b.* < a);
+        const b = try rt.pop();
+        var a = try rt.top();
+        a.* = @intFromBool(a.* < b);
     }
     pub fn @"<="(rt: *Runtime) RuntimeError!void {
-        const a = try rt.pop();
-        var b = try rt.top();
-        b.* = @intFromBool(b.* <= a);
+        const b = try rt.pop();
+        var a = try rt.top();
+        a.* = @intFromBool(a.* <= b);
     }
     pub fn @">"(rt: *Runtime) RuntimeError!void {
-        const a = try rt.pop();
-        var b = try rt.top();
-        b.* = @intFromBool(b.* > a);
+        const b = try rt.pop();
+        var a = try rt.top();
+        a.* = @intFromBool(a.* > b);
     }
     pub fn @">="(rt: *Runtime) RuntimeError!void {
-        const a = try rt.pop();
-        var b = try rt.top();
-        b.* = @intFromBool(b.* >= a);
+        const b = try rt.pop();
+        var a = try rt.top();
+        a.* = @intFromBool(a.* >= b);
     }
     pub fn print(rt: *Runtime) RuntimeError!void {
         const val = try rt.pop();
