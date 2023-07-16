@@ -141,12 +141,10 @@ pub const Runtime = struct {
     fn execWords(self: *Runtime, words: Words) UnitError!void {
         var node = Node(Words).init(words);
         self.call_stack.push(&node);
-        self.trace("push call stack {}", .{words});
         try self.execStack();
     }
 
     fn execStack(self: *Runtime) UnitError!void {
-        self.trace("execStack stack: {}", .{self.stack});
         while (true) {
             if (self.call_stack.head) |call_node| {
                 if (call_node.val.pop()) |word| {
@@ -162,7 +160,7 @@ pub const Runtime = struct {
     }
 
     fn execWord(self: *Runtime, word: Sp(Word)) UnitError!void {
-        self.trace("execWord stack:  {}", .{self.stack});
+        self.trace("stack: {}", .{self.stack});
         self.last_span = word.span;
         switch (word.val) {
             .int => |int| {
@@ -172,7 +170,7 @@ pub const Runtime = struct {
                 try self.execStack();
             },
             .builtin => |builtin| {
-                self.trace("call {}", .{builtin});
+                self.trace("call builtin {}", .{builtin});
                 try builtin.f(self);
             },
             .call => |function| {
@@ -223,8 +221,7 @@ pub const Runtime = struct {
     }
 
     fn top(self: *Runtime, comptime T: type) UnitError!*T {
-        const val = try self.topValue();
-        const type_name = switch (val.*) {
+        const type_name = switch (self.topValue().*) {
             .int => |*int| if (T == Int) return int else "int",
             .builtin_func => |*builtin| if (T == *const BuiltinFunction) return builtin else "function",
             .code_func => |*code| if (T == *const CodeFunction) return code else "function",
@@ -234,6 +231,33 @@ pub const Runtime = struct {
             .actual = type_name,
         } };
         return error.err;
+    }
+
+    fn callTopValue(self: *Runtime) UnitError!void {
+        switch (self.topValue().*) {
+            .int => {},
+            else => try self.callValue(self.popValue() catch unreachable),
+        }
+    }
+
+    fn callValue(self: *Runtime, val: Value) UnitError!void {
+        switch (val) {
+            .int => {
+                var node = Node(Value).init(val);
+                self.stack.push(&node);
+                try self.execStack();
+            },
+            .builtin_func => |func| {
+                self.trace("call builtin {}", .{func});
+                try func.f(self);
+            },
+            .code_func => |func| {
+                try self.call(func.func orelse {
+                    self.err = .unresolved_function;
+                    return error.err;
+                });
+            },
+        }
     }
 };
 
@@ -265,36 +289,50 @@ pub const CodeFunction = struct {
         } else if (self.func) |func| {
             return writer.print("fn at {}", .{func.span.start});
         } else {
-            return writer.print("fn <unknown>", .{});
+            return writer.print("fn", .{});
         }
     }
 };
 pub const Words = List(Sp(Word));
 
 pub const RBuiltins = struct {
+    pub fn @"true"(rt: *Runtime) UnitError!void {
+        var node = Node(Value).init(.{ .int = 1 });
+        rt.stack.push(&node);
+        try rt.execStack();
+    }
+    pub fn @"false"(rt: *Runtime) UnitError!void {
+        var node = Node(Value).init(.{ .int = 0 });
+        rt.stack.push(&node);
+        try rt.execStack();
+    }
     pub fn call(rt: *Runtime) UnitError!void {
-        const val = try rt.topValue();
-        switch (val.*) {
-            .int => {},
-            .builtin_func => |func| {
-                _ = rt.popValue() catch unreachable;
-                try func.f(rt);
-            },
-            .code_func => |func| {
-                _ = rt.popValue() catch unreachable;
-                try rt.call(func.func orelse {
-                    rt.err = .unresolved_function;
-                    return error.err;
-                });
-            },
+        try rt.callTopValue();
+    }
+    pub fn @"if"(rt: *Runtime) UnitError!void {
+        const if_false = try rt.popValue();
+        const if_true = try rt.popValue();
+        const cond = try rt.pop(Int);
+        rt.trace("if {} {} {}", .{ cond, if_true, if_false });
+        if (cond == 0) {
+            try rt.callValue(if_false);
+        } else {
+            try rt.callValue(if_true);
         }
     }
     pub fn dup(rt: *Runtime) UnitError!void {
-        const val = try rt.popValue();
-        var a = Node(Value).init(val);
-        var b = Node(Value).init(val);
-        rt.stack.push(&a);
-        rt.stack.push(&b);
+        const val = try rt.topValue();
+        var duped = Node(Value).init(val.*);
+        rt.stack.push(&duped);
+        try rt.execStack();
+    }
+    pub fn swap(rt: *Runtime) UnitError!void {
+        const a = try rt.popValue();
+        const b = try rt.popValue();
+        var a_node = Node(Value).init(a);
+        var b_node = Node(Value).init(b);
+        rt.stack.push(&a_node);
+        rt.stack.push(&b_node);
         try rt.execStack();
     }
     pub fn drop(rt: *Runtime) UnitError!void {

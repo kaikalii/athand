@@ -82,7 +82,8 @@ pub const Compiler = struct {
                     }
                 }
                 if (self.unfinishedFunc()) |func| {
-                    if (func.val.name) |_| {
+                    var has_name = if (func.val.name) |name| name.len > 0 else true;
+                    if (has_name) {
                         var builtin_fn: ?runtime.BuiltinFn = null;
                         inline for (@typeInfo(runtime.RBuiltins).Struct.decls) |decl| {
                             if (std.mem.eql(u8, ident, decl.name)) {
@@ -176,7 +177,10 @@ pub const Compiler = struct {
                         self.resolveIdentifiers(child);
                     } else if (function.name) |name| {
                         function.func = self.data.findFunction(name) orelse {
-                            self.err = .{ .kind = CompileErrorKind.unknown_function, .span = function.func.?.span };
+                            self.err = .{
+                                .kind = CompileErrorKind.unknown_function,
+                                .span = (function.func orelse func).span,
+                            };
                             return;
                         };
                     }
@@ -203,7 +207,7 @@ const CBuiltins = struct {
     pub fn @"fn"(comp: *Compiler, span: Span) void {
         comp.finishItem();
         var node = Node(Func).init(.{
-            .name = null,
+            .name = "",
             .span = span,
             .body = List(Sp(Word)).init(),
             .is_finished = false,
@@ -339,8 +343,9 @@ pub const Func = struct {
     is_finished: bool,
 
     pub fn format(self: @This(), comptime s: []const u8, _: std.fmt.FormatOptions, writer: anytype) std.os.WriteError!void {
+        const just_name = std.mem.eql(u8, s, "s");
         if (self.name) |name| {
-            if (std.mem.eql(u8, s, "s")) {
+            if (just_name) {
                 try writer.print("{s}", .{name});
                 return;
             } else {
@@ -348,6 +353,9 @@ pub const Func = struct {
             }
         } else {
             try writer.print("fn at {}", .{self.span.start});
+            if (just_name) {
+                return;
+            }
         }
         try writer.print(" {}", .{self.body});
     }
