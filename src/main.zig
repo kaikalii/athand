@@ -27,12 +27,14 @@ pub fn main() !void {
 }
 
 fn whenCompiled(data: compile.Compiled) void {
-    var func = data.functions.head;
-    while (func) |f| {
-        std.debug.print("{}\n", .{f.val});
-        func = f.next;
+    if (runtime.trace_rt) {
+        var func = data.functions.head;
+        while (func) |f| {
+            std.debug.print("{}\n", .{f.val});
+            func = f.next;
+        }
+        std.debug.print("\n", .{});
     }
-    std.debug.print("\n", .{});
 
     var rt = runtime.Runtime.init(data);
     rt.start() catch |err| std.debug.print("{}", .{err});

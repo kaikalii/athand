@@ -15,6 +15,8 @@ pub const RuntimeError = error{
 
 pub const Value = i64;
 
+pub const trace_rt = @import("shared_ops").trace_rt;
+
 pub const Runtime = struct {
     data: compile.Compiled,
     stack: List(Value),
@@ -36,10 +38,6 @@ pub const Runtime = struct {
     }
 
     fn trace(self: *Runtime, comptime s: []const u8, args: anytype) void {
-        comptime var trace_rt = false;
-        comptime {
-            trace_rt = @import("shared_ops").trace_rt;
-        }
         if (!trace_rt)
             return;
         for (0..self.depth + 1) |_| {
