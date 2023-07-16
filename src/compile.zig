@@ -10,12 +10,14 @@ pub const CompileErrorKind = enum {
     unexpected_token,
     invalid_number,
     unknown_function,
+    unclosed_function,
 
     pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) std.os.WriteError!void {
         return switch (self) {
             CompileErrorKind.unexpected_token => writer.print("unexpected token", .{}),
             CompileErrorKind.invalid_number => writer.print("invalid number", .{}),
             CompileErrorKind.unknown_function => writer.print("unknown function", .{}),
+            CompileErrorKind.unclosed_function => writer.print("unclosed function", .{}),
         };
     }
 };
@@ -97,7 +99,6 @@ pub const Compiler = struct {
                         } else {
                             word = .{ .call = .{
                                 .name = ident,
-                                .span = token.span,
                                 .func = null,
                             } };
                         }
@@ -131,11 +132,19 @@ pub const Compiler = struct {
     }
 
     fn finishItem(self: *Compiler) void {
-        if (self.unfinishedFunc()) |func|
+        if (self.unfinishedFunc()) |func| {
             func.val.finish();
+        }
     }
 
     fn finish(self: *Compiler) void {
+        // Ensure all quotes are finished
+        if (self.unfinishedFunc()) |func| {
+            _ = func.val.name orelse {
+                self.err = .{ .kind = CompileErrorKind.unclosed_function, .span = func.val.span };
+            };
+        }
+
         // Finish last item
         self.finishItem();
 
@@ -148,6 +157,10 @@ pub const Compiler = struct {
                 currWord = word.next;
             }
             currFunc = func.next;
+        }
+
+        if (self.err) |_| {
+            return;
         }
 
         // Call continuation
@@ -163,7 +176,7 @@ pub const Compiler = struct {
                         self.resolveIdentifiers(child);
                     } else if (function.name) |name| {
                         function.func = self.data.findFunction(name) orelse {
-                            self.err = .{ .kind = CompileErrorKind.unknown_function, .span = function.span };
+                            self.err = .{ .kind = CompileErrorKind.unknown_function, .span = function.func.?.span };
                             return;
                         };
                     }
@@ -217,7 +230,7 @@ const CBuiltins = struct {
             func.val.finish();
             var parent = comp.unfinishedFunc().?;
             var node = Node(Sp(Word)).init(.{
-                .val = .{ .quote = .{ .name = null, .span = span, .func = &func.val } },
+                .val = .{ .quote = .{ .name = null, .func = &func.val } },
                 .span = span,
             });
             parent.val.body.push(&node);
@@ -315,7 +328,11 @@ pub fn reverse_list(comptime T: type, head: **Node(T)) void {
     head.* = prev.?;
 }
 
+/// A function definition
 pub const Func = struct {
+    /// The name of the function
+    ///
+    /// If this is null, the function is anonymous
     name: ?[]const u8,
     span: Span,
     body: List(Sp(Word)),

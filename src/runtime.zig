@@ -257,14 +257,15 @@ pub const BuiltinFunction = struct {
 };
 pub const CodeFunction = struct {
     name: ?[]const u8,
-    span: lex.Span,
     func: ?*compile.Func,
 
     pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) std.os.WriteError!void {
         if (self.name) |name| {
             return writer.print("{s}", .{name});
+        } else if (self.func) |func| {
+            return writer.print("fn at {}", .{func.span.start});
         } else {
-            return writer.print("fn at {}", .{self.span.start});
+            return writer.print("fn <unknown>", .{});
         }
     }
 };
@@ -351,11 +352,11 @@ pub const RBuiltins = struct {
         a.* = @intFromBool(a.* >= b);
     }
     pub fn print(rt: *Runtime) UnitError!void {
-        const val = try rt.pop(Int);
+        const val = try rt.popValue();
         std.debug.print("{}", .{val});
     }
     pub fn println(rt: *Runtime) UnitError!void {
-        const val = try rt.pop(Int);
+        const val = try rt.popValue();
         std.debug.print("{}\n", .{val});
     }
 };

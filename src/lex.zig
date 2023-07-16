@@ -116,6 +116,12 @@ const Lexer = struct {
                             _ = self.nextIf(isIdentBody) orelse break;
                         const name = self.input[start.pos..self.curr.pos];
                         self.addToken(start, Token{ .ident = name });
+                    } else if (isOperator(cp)) {
+                        // Operators
+                        while (true)
+                            _ = self.nextIf(isOperator) orelse break;
+                        const name = self.input[start.pos..self.curr.pos];
+                        self.addToken(start, Token{ .ident = name });
                     } else if (isDigit(cp) or cp[0] == '-') {
                         // Integers
                         var got_digit = isDigit(cp);
@@ -186,4 +192,14 @@ fn isDigit(cp: []const u8) bool {
 
 fn isIdentBody(c: []const u8) bool {
     return isIdentStart(c) or isDigit(c);
+}
+
+fn isOperator(c: []const u8) bool {
+    const ops = [_]u8{
+        '+', '-', '*', '/', '%', '^', '&', '|', '!', '=', '<', '>', '?', ':', '~',
+    };
+    for (ops) |op| {
+        if (c[0] == op) return true;
+    }
+    return false;
 }

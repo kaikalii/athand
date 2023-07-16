@@ -1,2 +1,2 @@
 
-fn main [1 2] call + println
+fn main 1 1 [1 2 3] print
