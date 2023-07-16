@@ -370,8 +370,12 @@ pub const RBuiltins = struct {
     pub fn @"/"(rt: *Runtime) UnitError!void {
         const b = try rt.pop(Int);
         var a = try rt.top(Int);
-        rt.trace("div {} / {}", .{ a.*, b });
         a.* = @divTrunc(a.*, b);
+    }
+    pub fn @"%"(rt: *Runtime) UnitError!void {
+        const b = try rt.pop(Int);
+        var a = try rt.top(Int);
+        a.* = @mod(a.*, b);
     }
     pub fn @"=="(rt: *Runtime) UnitError!void {
         const b = try rt.pop(Int);

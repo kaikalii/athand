@@ -117,24 +117,29 @@ const Lexer = struct {
                         const name = self.input[start.pos..self.curr.pos];
                         self.addToken(start, Token{ .ident = name });
                     } else if (isOperator(cp)) {
-                        // Operators
+                        // Operators and negative numbers
                         while (true)
                             _ = self.nextIf(isOperator) orelse break;
                         const name = self.input[start.pos..self.curr.pos];
+                        if (std.mem.eql(u8, name, "-")) {
+                            var got_digit = false;
+                            while (true) {
+                                _ = self.nextIf(isDigit) orelse break;
+                                got_digit = true;
+                            }
+                            if (got_digit) {
+                                const num = self.input[start.pos..self.curr.pos];
+                                self.addToken(start, Token{ .num = num });
+                                continue;
+                            }
+                        }
                         self.addToken(start, Token{ .ident = name });
-                    } else if (isDigit(cp) or cp[0] == '-') {
+                    } else if (isDigit(cp)) {
                         // Integers
-                        var got_digit = isDigit(cp);
-                        while (true) {
+                        while (true)
                             _ = self.nextIf(isDigit) orelse break;
-                            got_digit = true;
-                        }
-                        if (got_digit) {
-                            const name = self.input[start.pos..self.curr.pos];
-                            self.addToken(start, Token{ .num = name });
-                        } else {
-                            self.addToken(start, Token{ .ident = cp });
-                        }
+                        const num = self.input[start.pos..self.curr.pos];
+                        self.addToken(start, Token{ .num = num });
                     } else if (cp[0] == '/') {
                         // Comments or division
                         if (self.currChar() == '/') {

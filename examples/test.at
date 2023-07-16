@@ -1,1 +1,1 @@
-fn main 1 2 3 debug
+fn main -5 2 % println
