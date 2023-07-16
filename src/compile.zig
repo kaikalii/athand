@@ -91,19 +91,23 @@ pub const Compiler = struct {
                                 break;
                             }
                         }
-                        var node: Node(Word) = undefined;
+                        var word: Word = undefined;
                         if (builtin_fn) |f| {
-                            node = Node(Word).init(.{ .builtin = .{
+                            word = .{ .builtin = .{
                                 .f = f,
                                 .name = ident,
-                            } });
+                            } };
                         } else {
-                            node = Node(Word).init(.{ .call = .{
+                            word = .{ .call = .{
                                 .name = ident,
                                 .span = token.span,
                                 .func = null,
-                            } });
+                            } };
                         }
+                        var node = Node(Sp(Word)).init(.{
+                            .val = word,
+                            .span = token.span,
+                        });
                         func.val.body.push(&node);
                     } else {
                         func.val.name = ident;
@@ -119,7 +123,7 @@ pub const Compiler = struct {
                         self.err = .{ .kind = CompileErrorKind.InvalidNumber, .span = token.span };
                         return;
                     };
-                    var node = Node(Word).init(.{ .int = i });
+                    var node = Node(Sp(Word)).init(.{ .val = .{ .int = i }, .span = token.span });
                     func.val.body.push(&node);
                     self.run();
                 } else {
@@ -158,7 +162,7 @@ pub const Compiler = struct {
     fn resolveIdentifiers(self: *Compiler, func: *Func) void {
         var currWord = func.body.head;
         while (currWord) |word| {
-            switch (word.val) {
+            switch (word.val.val) {
                 .call => |*function| {
                     if (function.func) |child| {
                         self.resolveIdentifiers(child);
@@ -193,7 +197,7 @@ const CBuiltins = struct {
         var node = Node(Func).init(.{
             .name = null,
             .span = span,
-            .body = List(Word).init(),
+            .body = List(Sp(Word)).init(),
             .is_finished = false,
         });
         comp.data.functions.push(&node);
@@ -208,7 +212,7 @@ const CBuiltins = struct {
         var node = Node(Func).init(.{
             .name = null,
             .span = span,
-            .body = List(Word).init(),
+            .body = List(Sp(Word)).init(),
             .is_finished = false,
         });
         comp.data.functions.push(&node);
@@ -219,7 +223,10 @@ const CBuiltins = struct {
         if (comp.unfinishedFunc()) |func| {
             func.val.finish();
             var parent = comp.unfinishedFunc().?;
-            var node = Node(Word).init(.{ .quote = .{ .name = null, .span = span, .func = &func.val } });
+            var node = Node(Sp(Word)).init(.{
+                .val = .{ .quote = .{ .name = null, .span = span, .func = &func.val } },
+                .span = span,
+            });
             parent.val.body.push(&node);
             comp.run();
         } else {
@@ -318,7 +325,7 @@ pub fn reverse_list(comptime T: type, head: **Node(T)) void {
 pub const Func = struct {
     name: ?[]const u8,
     span: Span,
-    body: List(Word),
+    body: List(Sp(Word)),
     is_finished: bool,
 
     pub fn format(self: @This(), comptime s: []const u8, _: std.fmt.FormatOptions, writer: anytype) std.os.WriteError!void {

@@ -37,5 +37,5 @@ fn whenCompiled(data: compile.Compiled) void {
     }
 
     var rt = runtime.Runtime.init(data);
-    rt.start() catch |err| std.debug.print("{}", .{err});
+    if (rt.start()) |err| std.debug.print("{}", .{err});
 }
