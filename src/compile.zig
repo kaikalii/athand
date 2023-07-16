@@ -275,6 +275,13 @@ pub fn List(comptime T: type) type {
             }
         }
 
+        pub fn len(self: *const @This()) usize {
+            var curr = self.head;
+            var n = 0;
+            while (curr) |node| : (curr = node.next) n += 1;
+            return n;
+        }
+
         pub fn format(self: @This(), comptime s: []const u8, _: std.fmt.FormatOptions, writer: anytype) std.os.WriteError!void {
             var curr = self.head;
             try writer.print("[", .{});
